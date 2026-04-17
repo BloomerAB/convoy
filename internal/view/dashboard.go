@@ -23,23 +23,14 @@ func NewDashboard(onDescribe func(model.Resource)) *Dashboard {
 		SetFixed(1, 0).
 		SetSeparator(' ')
 
-	d := &Dashboard{
+	return &Dashboard{
 		Table:      table,
 		onDescribe: onDescribe,
 	}
-
-	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Key() == tcell.KeyRune && event.Rune() == 'd' {
-			d.describeSelected()
-			return nil
-		}
-		return event
-	})
-
-	return d
 }
 
-func (d *Dashboard) describeSelected() {
+// DescribeSelected opens the describe view for the currently selected row.
+func (d *Dashboard) DescribeSelected() {
 	row, _ := d.GetSelection()
 	idx := row - 1
 	if idx >= 0 && idx < len(d.sorted) && d.onDescribe != nil {

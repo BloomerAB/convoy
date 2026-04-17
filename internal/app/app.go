@@ -32,6 +32,7 @@ type App struct {
 	watchers     []dao.Watcher
 	cancel       context.CancelFunc
 	showMineOnly bool
+	cmdActive    bool
 }
 
 func New(cfg config.Config) *App {
@@ -203,13 +204,25 @@ func (a *App) onDescribe(r model.Resource) {
 }
 
 func (a *App) handleInput(event *tcell.EventKey) *tcell.EventKey {
+	// When cmd bar is active, only handle Ctrl+C — let the cmd bar handle everything else
+	if a.cmdActive {
+		if event.Key() == tcell.KeyCtrlC {
+			a.Stop()
+			return nil
+		}
+		return event
+	}
+
 	switch event.Key() {
 	case tcell.KeyCtrlC:
 		a.Stop()
 		return nil
 	case tcell.KeyEscape:
-		a.pageStack.Pop()
-		return nil
+		if a.pageStack.Current() != "dashboard" {
+			a.pageStack.Pop()
+			return nil
+		}
+		return event
 	case tcell.KeyRune:
 		switch event.Rune() {
 		case 'q':
@@ -221,6 +234,12 @@ func (a *App) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		case 'm':
 			a.toggleMine()
 			return nil
+		case 'd':
+			if a.pageStack.Current() == "dashboard" {
+				a.dashboard.DescribeSelected()
+				return nil
+			}
+			return event
 		case ':':
 			a.showCmdBar(":")
 			return nil
@@ -233,6 +252,7 @@ func (a *App) handleInput(event *tcell.EventKey) *tcell.EventKey {
 }
 
 func (a *App) showCmdBar(prefix string) {
+	a.cmdActive = true
 	a.cmdInput.Activate(prefix)
 	a.layout.RemoveItem(a.footer)
 	a.layout.AddItem(a.cmdInput, 1, 0, true)
@@ -240,6 +260,7 @@ func (a *App) showCmdBar(prefix string) {
 }
 
 func (a *App) hideCmdBar() {
+	a.cmdActive = false
 	a.layout.RemoveItem(a.cmdInput)
 	a.layout.AddItem(a.footer, 1, 0, false)
 	a.tviewApp.SetFocus(a.pageStack)
