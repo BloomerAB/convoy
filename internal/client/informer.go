@@ -144,6 +144,8 @@ func (w *FluxWatcher) unstructuredToResource(obj unstructured.Unstructured) mode
 
 	r.Revision = extractRevision(obj, w.kind)
 	r.LastTransition = extractLastTransition(conditions)
+	r.Interval = extractInterval(obj)
+	r.NextRun = calculateNextRun(obj, r.Interval)
 
 	return r
 }
@@ -214,6 +216,35 @@ func extractLastTransition(conditions []interface{}) time.Time {
 			return t
 		}
 	}
+	return time.Time{}
+}
+
+func extractInterval(obj unstructured.Unstructured) time.Duration {
+	raw, found, _ := unstructured.NestedString(obj.Object, "spec", "interval")
+	if !found || raw == "" {
+		return 0
+	}
+	// Flux uses Go duration format (e.g. "5m", "1h", "30s")
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0
+	}
+	return d
+}
+
+func calculateNextRun(obj unstructured.Unstructured, interval time.Duration) time.Time {
+	if interval == 0 {
+		return time.Time{}
+	}
+
+	// Use lastHandledReconcileAt if available, otherwise lastTransitionTime
+	lastReconcile, found, _ := unstructured.NestedString(obj.Object, "status", "lastHandledReconcileAt")
+	if found && lastReconcile != "" {
+		if t, err := time.Parse(time.RFC3339, lastReconcile); err == nil {
+			return t.Add(interval)
+		}
+	}
+
 	return time.Time{}
 }
 

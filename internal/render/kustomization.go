@@ -10,7 +10,7 @@ import (
 
 // ResourceHeader returns the column headers for the dashboard table.
 func ResourceHeader() []string {
-	return []string{"", "NAME", "KIND", "SOURCE", "STATUS", "MESSAGE", "AGE"}
+	return []string{"", "NAME", "KIND", "SOURCE", "STATUS", "NEXT", "MESSAGE", "AGE"}
 }
 
 // ResourceRow renders any resource to table cells.
@@ -38,8 +38,37 @@ func ResourceRow(r model.Resource) []string {
 		kindShort(r.Kind),
 		source,
 		r.Health.String(),
+		formatNextRun(r),
 		truncate(r.Message, 50),
 		formatAge(r.LastTransition),
+	}
+}
+
+func formatNextRun(r model.Resource) string {
+	if r.Kind == model.KindWorkflowRun {
+		return ""
+	}
+	if r.NextRun.IsZero() {
+		if r.Interval > 0 {
+			return "~" + formatDuration(r.Interval)
+		}
+		return ""
+	}
+	until := time.Until(r.NextRun)
+	if until <= 0 {
+		return "now"
+	}
+	return formatDuration(until)
+}
+
+func formatDuration(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	default:
+		return fmt.Sprintf("%dh", int(d.Hours()))
 	}
 }
 

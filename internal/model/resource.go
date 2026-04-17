@@ -26,11 +26,18 @@ type Resource struct {
 	Actor          string // GitHub username who triggered the run
 	Repo           string // GitHub repo (org/name) for workflow runs
 	Branch         string // Branch name for workflow runs
-	RunID          int64  // GitHub Actions run ID
-	URL            string // Web URL (GitHub run URL, etc.)
+	RunID          int64         // GitHub Actions run ID
+	URL            string        // Web URL (GitHub run URL, etc.)
+	Interval       time.Duration // Flux reconciliation interval
+	NextRun        time.Time     // Estimated next reconciliation
 }
 
-// SortKey returns a comparable key for sorting: failures first, then by transition time (newest first).
+// SortKey returns a comparable key for sorting:
+// failures first, then by next run time (soonest first), then by transition time (newest first).
 func (r Resource) SortKey() (int, int64) {
-	return int(r.Health), -r.LastTransition.Unix()
+	health := int(r.Health)
+	if !r.NextRun.IsZero() && health > int(HealthFailed) {
+		return health, r.NextRun.Unix()
+	}
+	return health, -r.LastTransition.Unix()
 }
