@@ -35,24 +35,24 @@ func (h *Header) Update(resources []model.Resource, clusterCount int, mineOnly b
 
 	var failText string
 	if failures > 0 {
-		failText = fmt.Sprintf("  [red]%d failing[-]", failures)
+		failText = fmt.Sprintf("  [#FF5050]%d failing[-]", failures)
 	}
 
 	var progText string
 	if progressing > 0 {
-		progText = fmt.Sprintf("  [yellow]%d progressing[-]", progressing)
+		progText = fmt.Sprintf("  [#FFFF64]%d progressing[-]", progressing)
 	}
 
 	mineText := ""
 	if mineOnly {
-		mineText = "  [yellow][mine][-]"
+		mineText = "  [#FFFF64][mine][-]"
 	}
 
-	viewMode := "[darkcyan]active[-]"
+	viewMode := "[#6EB5FF]active[-]"
 	if showAll {
-		viewMode = fmt.Sprintf("[darkcyan]all %d[-]", total)
+		viewMode = fmt.Sprintf("[#6EB5FF]all %d[-]", total)
 	}
 
-	h.SetText(fmt.Sprintf("[white::b]convoy[-]  %d clusters  %s%s%s%s",
+	h.SetText(fmt.Sprintf("[#FFFFFF::b]convoy[-]  %d clusters  %s%s%s%s",
 		clusterCount, viewMode, failText, progText, mineText))
 }

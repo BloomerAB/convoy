@@ -44,10 +44,10 @@ func NewConfigDetailView(file ConfigFile, onEdit func(ConfigFile)) *ConfigDetail
 func (cd *ConfigDetailView) loadContent() {
 	data, err := os.ReadFile(cd.file.Path)
 	if err != nil {
-		cd.SetText("[darkcyan]# " + cd.file.Path + "[-]\n\n[yellow](file does not exist yet — press 'e' to create)[-]")
+		cd.SetText("[#6EB5FF]# " + cd.file.Path + "[-]\n\n[#FFFF64](file does not exist yet — press 'e' to create)[-]")
 		return
 	}
-	cd.SetText("[darkcyan]# " + cd.file.Path + "[-]\n\n" + string(data))
+	cd.SetText("[#6EB5FF]# " + cd.file.Path + "[-]\n\n" + string(data))
 }
 
 // Reload re-reads the file from disk.

@@ -32,7 +32,7 @@ func (dv *DescribeView) render(r model.Resource) {
 
 	field := func(label, value string) {
 		if value != "" {
-			fmt.Fprintf(&b, "[darkcyan]%-18s[-] %s\n", label+":", value)
+			fmt.Fprintf(&b, "[#6EB5FF]%-18s[-] %s\n", label+":", value)
 		}
 	}
 
@@ -50,13 +50,13 @@ func (dv *DescribeView) render(r model.Resource) {
 
 	b.WriteString("\n")
 
-	statusColor := "green"
+	statusColor := "#64FF64"
 	if r.Health.IsFailed() {
-		statusColor = "red"
+		statusColor = "#FF5050"
 	} else if r.Health == model.HealthProgressing {
-		statusColor = "yellow"
+		statusColor = "#FFFF64"
 	}
-	fmt.Fprintf(&b, "[darkcyan]%-18s[-] [%s]%s %s[-]\n", "Status:", statusColor, r.Health.Symbol(), r.Health.String())
+	fmt.Fprintf(&b, "[#6EB5FF]%-18s[-] [%s]%s %s[-]\n", "Status:", statusColor, r.Health.Symbol(), r.Health.String())
 
 	field("Revision", r.Revision)
 	if !r.LastTransition.IsZero() {
@@ -64,7 +64,7 @@ func (dv *DescribeView) render(r model.Resource) {
 	}
 
 	if r.Message != "" {
-		b.WriteString("\n[darkcyan]Message:[-]\n")
+		b.WriteString("\n[#6EB5FF]Message:[-]\n")
 		b.WriteString(r.Message)
 		b.WriteString("\n")
 	}

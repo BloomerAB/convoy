@@ -37,14 +37,14 @@ func footerText(filter string, mineOnly bool, showAll bool, kindFilter string) s
 
 	indicators := ""
 	if kindFilter != "" {
-		indicators += fmt.Sprintf("  [aqua]%s[-]", kindFilter)
+		indicators += fmt.Sprintf("  [#00DDDD]%s[-]", kindFilter)
 	}
 	if filter != "" {
-		indicators += fmt.Sprintf("  [yellow]/%s[-]", filter)
+		indicators += fmt.Sprintf("  [#FFFF64]/%s[-]", filter)
 	}
 	if filter != "" || kindFilter != "" {
 		indicators += " (Esc clear)"
 	}
 
-	return fmt.Sprintf("[darkcyan]:cmd  /filter  d:describe  %s  %s  r:refresh  q:quit[-]%s", allHint, mineHint, indicators)
+	return fmt.Sprintf("[#6EB5FF]:cmd  /filter  d:describe  %s  %s  r:refresh  q:quit[-]%s", allHint, mineHint, indicators)
 }

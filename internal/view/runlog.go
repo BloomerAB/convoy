@@ -27,7 +27,7 @@ func NewRunLogView(r model.Resource) *RunLogView {
 	tv.SetBorder(true).
 		SetTitle(fmt.Sprintf(" %s/%s #%s (Esc: back) ", repo, r.Name, r.Revision)).
 		SetBorderColor(tcell.ColorCornflowerBlue)
-	tv.SetText("[yellow]Loading jobs...[-]")
+	tv.SetText("[#FFFF64]Loading jobs...[-]")
 
 	return &RunLogView{TextView: tv, Resource: r}
 }
@@ -39,13 +39,13 @@ func (v *RunLogView) SetContent(content string) {
 		trimmed := strings.TrimSpace(line)
 		switch {
 		case strings.HasPrefix(trimmed, "✗"):
-			fmt.Fprintf(&b, "[red]%s[-]\n", line)
+			fmt.Fprintf(&b, "[#FF5050]%s[-]\n", line)
 		case strings.Contains(line, "[FAILED]"):
-			fmt.Fprintf(&b, "[red]%s[-]\n", line)
+			fmt.Fprintf(&b, "[#FF5050]%s[-]\n", line)
 		case strings.HasPrefix(trimmed, "●"):
-			fmt.Fprintf(&b, "[yellow]%s[-]\n", line)
+			fmt.Fprintf(&b, "[#FFFF64]%s[-]\n", line)
 		case strings.HasPrefix(trimmed, "◌"):
-			fmt.Fprintf(&b, "[gray]%s[-]\n", line)
+			fmt.Fprintf(&b, "[#9696B4]%s[-]\n", line)
 		default:
 			fmt.Fprintf(&b, "%s\n", line)
 		}
@@ -54,5 +54,5 @@ func (v *RunLogView) SetContent(content string) {
 }
 
 func (v *RunLogView) SetError(err error) {
-	v.SetText(fmt.Sprintf("[red]Error fetching jobs: %v[-]", err))
+	v.SetText(fmt.Sprintf("[#FF5050]Error fetching jobs: %v[-]", err))
 }
