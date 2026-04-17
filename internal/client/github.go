@@ -216,12 +216,19 @@ func (p *GitHubPoller) Resources() []model.Resource {
 }
 
 // RerunWorkflow re-runs a GitHub Actions workflow run.
-func (p *GitHubPoller) RerunWorkflow(ctx context.Context, repo string, runID int64) error {
+// Uses rerun-failed-jobs for failed runs, full rerun otherwise.
+func (p *GitHubPoller) RerunWorkflow(ctx context.Context, repo string, runID int64, failed bool) error {
 	parts := strings.SplitN(repo, "/", 2)
 	if len(parts) != 2 {
 		return fmt.Errorf("invalid repo: %s", repo)
 	}
-	_, err := p.client.Actions.RerunWorkflowByID(ctx, parts[0], parts[1], runID)
+	owner, repoName := parts[0], parts[1]
+
+	if failed {
+		_, err := p.client.Actions.RerunFailedJobsByID(ctx, owner, repoName, runID)
+		return err
+	}
+	_, err := p.client.Actions.RerunWorkflowByID(ctx, owner, repoName, runID)
 	return err
 }
 

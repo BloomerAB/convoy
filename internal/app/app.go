@@ -356,7 +356,7 @@ func (a *App) reconcileOrRerun() {
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			err := a.ghPoller.RerunWorkflow(ctx, r.Repo, r.RunID)
+			err := a.ghPoller.RerunWorkflow(ctx, r.Repo, r.RunID, r.Health.IsFailed())
 			if err != nil {
 				log.Printf("rerun workflow: %v", err)
 			} else {
