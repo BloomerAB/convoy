@@ -373,6 +373,11 @@ func (a *App) showRunLogFor(r *model.Resource) {
 	}()
 }
 
+func (a *App) showHelp() {
+	hv := view.NewHelpView()
+	a.pageStack.Push("help", hv)
+}
+
 func (a *App) onDescribe(r model.Resource) {
 	dv := view.NewDescribeView(r)
 	a.pageStack.Push("describe", dv)
@@ -437,6 +442,9 @@ func (a *App) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		case 'o':
 			a.openInBrowser()
 			return nil
+		case '?':
+			a.showHelp()
+			return nil
 		case ':':
 			a.showCmdBar(":")
 			return nil
@@ -493,7 +501,7 @@ func (a *App) onCommand(text string) {
 		a.clearFilter()
 	case "gha", "actions", "workflows":
 		a.pushKindView(model.KindWorkflowRun, true)
-	case "ks", "kustomization", "kustomizations":
+	case "ks", "kustomize", "kustomization", "kustomizations":
 		a.pushKindView(model.KindKustomization, false)
 	case "hr", "helmrelease", "helmreleases":
 		a.pushKindView(model.KindHelmRelease, false)
