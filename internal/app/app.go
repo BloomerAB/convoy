@@ -176,17 +176,22 @@ func (a *App) onCommand(text string) {
 }
 
 func (a *App) execConfig() {
-	newCfg, changed, err := editConfig(a.tviewApp)
-	if err != nil {
-		log.Printf("config edit error: %v", err)
-		return
-	}
-	if !changed {
-		return
-	}
-
-	a.cfg = newCfg
-	a.restartWatchers()
+	cv := view.NewConfigView(a.cfg, func() {
+		newCfg, changed, err := editConfig(a.tviewApp)
+		if err != nil {
+			log.Printf("config edit error: %v", err)
+			return
+		}
+		if changed {
+			a.cfg = newCfg
+			a.restartWatchers()
+		}
+		// Re-render the config view with potentially updated config
+		// Pop and re-push to refresh
+		a.pageStack.Pop()
+		a.execConfig()
+	})
+	a.pageStack.Push("config", cv)
 }
 
 func (a *App) restartWatchers() {
