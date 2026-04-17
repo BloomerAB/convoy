@@ -39,13 +39,21 @@ func DefaultConfig() Config {
 	}
 }
 
+// ConfigDir returns the convoy config directory, using XDG convention.
+func ConfigDir() string {
+	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
+		return filepath.Join(xdg, "convoy")
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = "."
+	}
+	return filepath.Join(home, ".config", "convoy")
+}
+
 // Path returns the config file path.
 func Path() (string, error) {
-	configDir, err := os.UserConfigDir()
-	if err != nil {
-		return "", fmt.Errorf("config dir: %w", err)
-	}
-	return filepath.Join(configDir, "convoy", "config.yaml"), nil
+	return filepath.Join(ConfigDir(), "config.yaml"), nil
 }
 
 func Load() (Config, error) {

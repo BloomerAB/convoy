@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/bloomerab/convoy/config"
 	"github.com/bloomerab/convoy/internal/ui"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -76,12 +77,7 @@ func (cl *ConfigListView) render() {
 
 // DiscoverConfigFiles returns all config files in the convoy config directory.
 func DiscoverConfigFiles() []ConfigFile {
-	configDir, err := os.UserConfigDir()
-	if err != nil {
-		return nil
-	}
-
-	dir := filepath.Join(configDir, "convoy")
+	dir := config.ConfigDir()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil
