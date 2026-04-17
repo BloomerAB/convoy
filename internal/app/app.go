@@ -348,6 +348,14 @@ func (a *App) openInBrowser() {
 	}
 }
 
+func (a *App) copyURL() {
+	if r := a.selectedResource(); r != nil && r.URL != "" {
+		cmd := exec.Command("pbcopy")
+		cmd.Stdin = strings.NewReader(r.URL)
+		_ = cmd.Run()
+	}
+}
+
 func (a *App) showRunLogFor(r *model.Resource) {
 	if a.ghPoller == nil {
 		return
@@ -441,6 +449,9 @@ func (a *App) handleInput(event *tcell.EventKey) *tcell.EventKey {
 			return event
 		case 'o':
 			a.openInBrowser()
+			return nil
+		case 'c':
+			a.copyURL()
 			return nil
 		case '?':
 			a.showHelp()

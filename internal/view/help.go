@@ -12,6 +12,7 @@ const helpText = `[#6EB5FF::b]Keys[-::-]
   [#FFFFFF]d[-]          Describe selected resource
   [#FFFFFF]l[-]          View GitHub Actions run jobs/steps
   [#FFFFFF]o[-]          Open in browser (GitHub Actions)
+  [#FFFFFF]c[-]          Copy URL to clipboard
   [#FFFFFF]r[-]          Force refresh
   [#FFFFFF]/[-]          Filter (regex across all fields)
   [#FFFFFF]:[-]          Command mode
