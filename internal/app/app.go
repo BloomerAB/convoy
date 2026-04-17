@@ -161,18 +161,34 @@ func (a *App) refreshLoop(ctx context.Context) {
 	}
 }
 
+// redraw queues a UI update from a background goroutine (ticker).
 func (a *App) redraw() {
+	all := a.collectResources()
+	filtered := a.filterResources(all)
+
+	a.tviewApp.QueueUpdateDraw(func() {
+		a.applyUpdate(filtered)
+	})
+}
+
+// redrawDirect updates the UI immediately — call from the UI goroutine only.
+func (a *App) redrawDirect() {
+	all := a.collectResources()
+	filtered := a.filterResources(all)
+	a.applyUpdate(filtered)
+}
+
+func (a *App) collectResources() []model.Resource {
 	var all []model.Resource
 	for _, w := range a.watchers {
 		all = append(all, w.Resources()...)
 	}
+	return all
+}
 
-	filtered := a.filterResources(all)
-
-	a.tviewApp.QueueUpdateDraw(func() {
-		a.dashboard.Refresh(filtered)
-		a.header.Update(filtered, len(a.factory.Clients()), a.showMineOnly)
-	})
+func (a *App) applyUpdate(resources []model.Resource) {
+	a.dashboard.Refresh(resources)
+	a.header.Update(resources, len(a.factory.Clients()), a.showMineOnly)
 }
 
 func (a *App) filterResources(resources []model.Resource) []model.Resource {
@@ -255,8 +271,8 @@ func matchSubstring(r model.Resource, lower string) bool {
 
 func (a *App) toggleMine() {
 	a.showMineOnly = !a.showMineOnly
-	a.redraw()
-	a.updateFooter()
+	a.redrawDirect()
+	a.updateFooterDirect()
 }
 
 func (a *App) onDescribe(r model.Resource) {
@@ -282,8 +298,8 @@ func (a *App) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		if (a.filterText != "" || a.kindFilter != "") && a.pageStack.Current() == "dashboard" {
 			a.filterText = ""
 			a.kindFilter = ""
-			a.redraw()
-			a.updateFooter()
+			a.redrawDirect()
+			a.updateFooterDirect()
 			return nil
 		}
 		if a.pageStack.Current() != "dashboard" {
@@ -297,7 +313,7 @@ func (a *App) handleInput(event *tcell.EventKey) *tcell.EventKey {
 			a.Stop()
 			return nil
 		case 'r':
-			a.redraw()
+			a.redrawDirect()
 			return nil
 		case 'm':
 			a.toggleMine()
@@ -377,32 +393,31 @@ func (a *App) onCommand(text string) {
 
 func (a *App) setFilter(text string) {
 	a.filterText = text
-	a.redraw()
-	a.updateFooter()
+	a.redrawDirect()
+	a.updateFooterDirect()
 }
 
 func (a *App) clearFilter() {
 	a.filterText = ""
-	a.redraw()
-	a.updateFooter()
+	a.redrawDirect()
+	a.updateFooterDirect()
 }
 
 func (a *App) setKindFilter(kind model.ResourceKind) {
 	a.kindFilter = kind
-	a.redraw()
-	a.updateFooter()
+	a.redrawDirect()
+	a.updateFooterDirect()
 }
 
 func (a *App) clearKindFilter() {
 	a.kindFilter = ""
-	a.redraw()
-	a.updateFooter()
+	a.redrawDirect()
+	a.updateFooterDirect()
 }
 
-func (a *App) updateFooter() {
-	a.tviewApp.QueueUpdateDraw(func() {
-		a.footer.Update(a.filterText, a.showMineOnly, string(a.kindFilter))
-	})
+// updateFooterDirect updates footer on the UI goroutine.
+func (a *App) updateFooterDirect() {
+	a.footer.Update(a.filterText, a.showMineOnly, string(a.kindFilter))
 }
 
 func (a *App) execConfig() {
