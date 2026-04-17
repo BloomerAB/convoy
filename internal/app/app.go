@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os/exec"
 	"regexp"
 	"strings"
 	"sync/atomic"
@@ -318,6 +319,14 @@ func (a *App) toggleShowAll() {
 	a.updateFooterDirect()
 }
 
+func (a *App) openInBrowser() {
+	r := a.dashboard.SelectedResource()
+	if r == nil || r.URL == "" {
+		return
+	}
+	_ = exec.Command("open", r.URL).Start()
+}
+
 func (a *App) showRunLog() {
 	r := a.dashboard.SelectedResource()
 	if r == nil || r.Kind != model.KindWorkflowRun || a.ghPoller == nil {
@@ -398,6 +407,12 @@ func (a *App) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		case 'l':
 			if a.pageStack.Current() == "dashboard" {
 				a.showRunLog()
+				return nil
+			}
+			return event
+		case 'o':
+			if a.pageStack.Current() == "dashboard" {
+				a.openInBrowser()
 				return nil
 			}
 			return event

@@ -27,6 +27,7 @@ type Resource struct {
 	Repo           string // GitHub repo (org/name) for workflow runs
 	Branch         string // Branch name for workflow runs
 	RunID          int64  // GitHub Actions run ID
+	URL            string // Web URL (GitHub run URL, etc.)
 }
 
 // SortKey returns a comparable key for sorting: failures first, then by transition time (newest first).

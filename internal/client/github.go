@@ -183,6 +183,7 @@ func (p *GitHubPoller) fetchRuns(ctx context.Context, fullName string) ([]model.
 			}(),
 			Actor: run.GetActor().GetLogin(),
 			RunID: run.GetID(),
+			URL:   run.GetHTMLURL(),
 		}
 		if run.UpdatedAt != nil {
 			r.LastTransition = run.UpdatedAt.Time
