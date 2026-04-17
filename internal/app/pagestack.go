@@ -4,9 +4,9 @@ import (
 	"github.com/rivo/tview"
 )
 
-// PageStack manages a stack of views with push/pop navigation.
-// Switch replaces the current view (k9s-style : commands).
-// Push/Pop are for overlays (d, l, ? etc.) that go back on Esc.
+// PageStack manages navigation with history.
+// All views push onto the stack. Esc always pops back one step.
+// Dashboard is the base that can never be popped.
 type PageStack struct {
 	*tview.Pages
 	stack []string
@@ -19,27 +19,13 @@ func NewPageStack() *PageStack {
 	}
 }
 
-// Switch replaces the current primary view (like k9s : commands).
-// Keeps the "dashboard" base, removes everything above it, then adds the new page.
-func (ps *PageStack) Switch(name string, page tview.Primitive) {
-	// Pop everything down to the base (dashboard)
-	for len(ps.stack) > 1 {
-		old := ps.stack[len(ps.stack)-1]
-		ps.stack = ps.stack[:len(ps.stack)-1]
-		ps.RemovePage(old)
-	}
-	// Now push the new page on top of dashboard
-	ps.stack = append(ps.stack, name)
-	ps.AddAndSwitchToPage(name, page, true)
-}
-
-// Push adds an overlay page on top (for describe, logs, help).
+// Push adds a page on top. Esc will pop back to the previous view.
 func (ps *PageStack) Push(name string, page tview.Primitive) {
 	ps.stack = append(ps.stack, name)
 	ps.AddAndSwitchToPage(name, page, true)
 }
 
-// Pop removes the top overlay and returns to the previous view.
+// Pop removes the top page and returns to the previous one.
 func (ps *PageStack) Pop() {
 	if len(ps.stack) <= 1 {
 		return
@@ -48,6 +34,18 @@ func (ps *PageStack) Pop() {
 	ps.stack = ps.stack[:len(ps.stack)-1]
 	ps.RemovePage(current)
 	ps.SwitchToPage(ps.stack[len(ps.stack)-1])
+}
+
+// PopTo pops everything until reaching the named page (or dashboard).
+func (ps *PageStack) PopTo(name string) {
+	for len(ps.stack) > 1 && ps.stack[len(ps.stack)-1] != name {
+		old := ps.stack[len(ps.stack)-1]
+		ps.stack = ps.stack[:len(ps.stack)-1]
+		ps.RemovePage(old)
+	}
+	if len(ps.stack) > 0 {
+		ps.SwitchToPage(ps.stack[len(ps.stack)-1])
+	}
 }
 
 // Current returns the name of the current page.
