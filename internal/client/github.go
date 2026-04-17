@@ -89,19 +89,26 @@ func (p *GitHubPoller) poll(ctx context.Context) {
 		return
 	}
 
+	// Fetch runs incrementally — publish after each repo so data appears fast
 	var all []model.Resource
 	for _, repo := range repos {
+		if ctx.Err() != nil {
+			return
+		}
 		runs, err := p.fetchRuns(ctx, repo)
 		if err != nil {
 			log.Printf("github: fetch runs for %s: %v", repo, err)
 			continue
 		}
 		all = append(all, runs...)
-	}
 
-	p.mu.Lock()
-	p.runs = all
-	p.mu.Unlock()
+		// Publish partial results so UI sees data as it arrives
+		p.mu.Lock()
+		snapshot := make([]model.Resource, len(all))
+		copy(snapshot, all)
+		p.runs = snapshot
+		p.mu.Unlock()
+	}
 }
 
 func (p *GitHubPoller) discoverRepos(ctx context.Context) ([]string, error) {
@@ -121,11 +128,11 @@ func (p *GitHubPoller) discoverRepos(ctx context.Context) ([]string, error) {
 		return nil, nil
 	}
 
-	// List repos with recent activity
+	// List repos with recent activity (limit to 10 most recently pushed)
 	opts := &github.RepositoryListByOrgOptions{
 		Sort:        "pushed",
 		Direction:   "desc",
-		ListOptions: github.ListOptions{PerPage: 30},
+		ListOptions: github.ListOptions{PerPage: 10},
 	}
 	repos, _, err := p.client.Repositories.ListByOrg(ctx, p.cfg.Org, opts)
 	if err != nil {
