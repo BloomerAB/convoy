@@ -27,6 +27,16 @@ func (tv *TreeView) SelectedResource() *model.Resource {
 	return nil
 }
 
+// resKey returns a unique key for a resource: "Kind/namespace/name"
+func resKey(r model.Resource) string {
+	return string(r.Kind) + "/" + r.Namespace + "/" + r.Name
+}
+
+// ksKey returns the Kustomization key format: "namespace/name"
+func ksKey(r model.Resource) string {
+	return r.Namespace + "/" + r.Name
+}
+
 func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 	var clusterRes []model.Resource
 	for _, r := range resources {
@@ -36,8 +46,8 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 	}
 
 	// Separate by type
-	var sources []model.Resource
-	var workloads []model.Resource
+	var sources []model.Resource   // GitRepo, HelmRepo
+	var workloads []model.Resource // Kustomization, HelmRelease
 	for _, r := range clusterRes {
 		if r.Kind == model.KindGitRepository || r.Kind == model.KindHelmRepository {
 			sources = append(sources, r)
@@ -46,70 +56,73 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 		}
 	}
 
-	// Lookup for dependsOn resolution
+	// Lookup for dependsOn resolution (by name, cross-namespace)
 	byName := make(map[string][]model.Resource)
-	byNsName := make(map[string]model.Resource)
 	for _, r := range workloads {
-		byNsName[r.Namespace+"/"+r.Name] = r
 		byName[r.Name] = append(byName[r.Name], r)
 	}
 
 	resolveDep := func(dep string, fromNs string) string {
-		if _, ok := byNsName[dep]; ok {
-			return dep
-		}
-		if _, ok := byNsName[fromNs+"/"+dep]; ok {
-			return fromNs + "/" + dep
-		}
 		name := dep
 		if idx := strings.Index(dep, "/"); idx >= 0 {
 			name = dep[idx+1:]
 		}
 		if matches := byName[name]; len(matches) == 1 {
-			return matches[0].Namespace + "/" + matches[0].Name
+			return resKey(matches[0])
+		}
+		// Try same namespace
+		for _, m := range byName[name] {
+			if m.Namespace == fromNs {
+				return resKey(m)
+			}
 		}
 		return ""
 	}
 
-	// Build parent→children based on:
-	// 1. dependsOn (explicit Flux dependency)
-	// 2. ManagedBy (Kustomization that created this resource)
+	// Build parent→children map using full resKey
 	childrenOf := make(map[string][]model.Resource)
 	hasParent := make(map[string]bool)
 
-	// Pass 1: dependsOn (highest priority)
+	// Pass 1: dependsOn (explicit Flux dependency — highest priority)
 	for _, r := range workloads {
 		for _, dep := range r.DependsOn {
 			parentKey := resolveDep(dep, r.Namespace)
 			if parentKey != "" {
 				childrenOf[parentKey] = append(childrenOf[parentKey], r)
-				hasParent[r.Namespace+"/"+r.Name] = true
+				hasParent[resKey(r)] = true
 			}
 		}
 	}
 
-	// Pass 2: ManagedBy — HelmRepos and HelmReleases under their Kustomization
+	// Pass 2: ManagedBy label — resources under their managing Kustomization
+	// ManagedBy is "namespace/name" of a Kustomization
+	managedByToKey := func(managedBy string) string {
+		return string(model.KindKustomization) + "/" + managedBy
+	}
+
 	for _, r := range sources {
-		key := r.Namespace + "/" + r.Name
-		if !hasParent[key] && r.ManagedBy != "" {
-			childrenOf[r.ManagedBy] = append(childrenOf[r.ManagedBy], r)
-			hasParent[key] = true
+		rk := resKey(r)
+		if !hasParent[rk] && r.ManagedBy != "" {
+			pk := managedByToKey(r.ManagedBy)
+			childrenOf[pk] = append(childrenOf[pk], r)
+			hasParent[rk] = true
 		}
 	}
 	for _, r := range workloads {
-		key := r.Namespace + "/" + r.Name
-		if !hasParent[key] && r.ManagedBy != "" {
-			childrenOf[r.ManagedBy] = append(childrenOf[r.ManagedBy], r)
-			hasParent[key] = true
+		rk := resKey(r)
+		if !hasParent[rk] && r.ManagedBy != "" {
+			pk := managedByToKey(r.ManagedBy)
+			childrenOf[pk] = append(childrenOf[pk], r)
+			hasParent[rk] = true
 		}
 	}
 
-	// Pass 3: Kustomizations with no parent → place under their sourceRef GitRepo
+	// Pass 3: Kustomizations with no parent → under their sourceRef GitRepo
 	for _, r := range workloads {
-		key := r.Namespace + "/" + r.Name
-		if !hasParent[key] && r.Kind == model.KindKustomization && r.SourceRef != "" {
+		rk := resKey(r)
+		if !hasParent[rk] && r.Kind == model.KindKustomization && r.SourceRef != "" {
 			childrenOf["source:"+r.SourceRef] = append(childrenOf["source:"+r.SourceRef], r)
-			hasParent[key] = true
+			hasParent[rk] = true
 		}
 	}
 
@@ -131,13 +144,13 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 	})
 
 	for _, src := range gitRepos {
-		srcKey := src.Namespace + "/" + src.Name
-		added[srcKey] = true
+		rk := resKey(src)
+		added[rk] = true
 
 		srcNode := makeNode(src)
 		root.AddChild(srcNode)
 
-		// Children linked via sourceRef
+		// Kustomizations linked via sourceRef
 		sourceKey := "source:" + string(src.Kind) + "/" + src.Namespace + "/" + src.Name
 		addSortedChildren(srcNode, childrenOf[sourceKey], childrenOf, added)
 	}
@@ -145,11 +158,11 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 	// Remaining orphans
 	allRes := append(sources, workloads...)
 	for _, r := range allRes {
-		key := r.Namespace + "/" + r.Name
-		if !added[key] {
-			added[key] = true
+		rk := resKey(r)
+		if !added[rk] {
+			added[rk] = true
 			node := makeNode(r)
-			addSortedChildren(node, childrenOf[key], childrenOf, added)
+			addSortedChildren(node, childrenOf[resKey(r)], childrenOf, added)
 			root.AddChild(node)
 		}
 	}
@@ -166,23 +179,18 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 
 func addSortedChildren(parentNode *tview.TreeNode, children []model.Resource, childrenOf map[string][]model.Resource, added map[string]bool) {
 	sort.Slice(children, func(i, j int) bool {
-		// Sources before workloads, then alphabetical
-		iSrc := children[i].Kind == model.KindGitRepository || children[i].Kind == model.KindHelmRepository
-		jSrc := children[j].Kind == model.KindGitRepository || children[j].Kind == model.KindHelmRepository
-		if iSrc != jSrc {
-			return !iSrc // workloads (ks/hr) first, then sources
-		}
 		return children[i].Name < children[j].Name
 	})
 
 	for _, child := range children {
-		childKey := child.Namespace + "/" + child.Name
-		if added[childKey] {
+		rk := resKey(child)
+		if added[rk] {
 			continue
 		}
-		added[childKey] = true
+		added[rk] = true
 		childNode := makeNode(child)
-		addSortedChildren(childNode, childrenOf[childKey], childrenOf, added)
+		// Recurse: this child's own children
+		addSortedChildren(childNode, childrenOf[rk], childrenOf, added)
 		parentNode.AddChild(childNode)
 	}
 }
