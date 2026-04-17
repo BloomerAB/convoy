@@ -35,8 +35,9 @@ type App struct {
 	cancel       context.CancelFunc
 	showMineOnly bool
 	cmdActive    bool
-	cmdMode      string // ":" or "/"
-	filterText   string // active / filter (regex)
+	cmdMode      string             // ":" or "/"
+	filterText   string             // active / filter (regex)
+	kindFilter   model.ResourceKind // empty = all kinds
 }
 
 func New(cfg config.Config) *App {
@@ -177,6 +178,17 @@ func (a *App) redraw() {
 func (a *App) filterResources(resources []model.Resource) []model.Resource {
 	result := resources
 
+	// Kind filter
+	if a.kindFilter != "" {
+		var filtered []model.Resource
+		for _, r := range result {
+			if r.Kind == a.kindFilter {
+				filtered = append(filtered, r)
+			}
+		}
+		result = filtered
+	}
+
 	// Mine filter: only GHA runs by current user
 	if a.showMineOnly && a.ghPoller != nil {
 		username := a.ghPoller.Username()
@@ -244,9 +256,7 @@ func matchSubstring(r model.Resource, lower string) bool {
 func (a *App) toggleMine() {
 	a.showMineOnly = !a.showMineOnly
 	a.redraw()
-	a.tviewApp.QueueUpdateDraw(func() {
-		a.footer.UpdateFilter(a.filterText, a.showMineOnly)
-	})
+	a.updateFooter()
 }
 
 func (a *App) onDescribe(r model.Resource) {
@@ -269,8 +279,11 @@ func (a *App) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		a.Stop()
 		return nil
 	case tcell.KeyEscape:
-		if a.filterText != "" && a.pageStack.Current() == "dashboard" {
-			a.clearFilter()
+		if (a.filterText != "" || a.kindFilter != "") && a.pageStack.Current() == "dashboard" {
+			a.filterText = ""
+			a.kindFilter = ""
+			a.redraw()
+			a.updateFooter()
 			return nil
 		}
 		if a.pageStack.Current() != "dashboard" {
@@ -349,22 +362,46 @@ func (a *App) onCommand(text string) {
 		}
 	case "nofilter", "nf":
 		a.clearFilter()
+	case "gha", "actions", "workflows":
+		a.setKindFilter(model.KindWorkflowRun)
+	case "ks", "kustomization", "kustomizations":
+		a.setKindFilter(model.KindKustomization)
+	case "hr", "helmrelease", "helmreleases":
+		a.setKindFilter(model.KindHelmRelease)
+	case "gitrepo", "gitrepository", "gitrepositories":
+		a.setKindFilter(model.KindGitRepository)
+	case "all", "dash", "dashboard":
+		a.clearKindFilter()
 	}
 }
 
 func (a *App) setFilter(text string) {
 	a.filterText = text
 	a.redraw()
-	a.tviewApp.QueueUpdateDraw(func() {
-		a.footer.UpdateFilter(a.filterText, a.showMineOnly)
-	})
+	a.updateFooter()
 }
 
 func (a *App) clearFilter() {
 	a.filterText = ""
 	a.redraw()
+	a.updateFooter()
+}
+
+func (a *App) setKindFilter(kind model.ResourceKind) {
+	a.kindFilter = kind
+	a.redraw()
+	a.updateFooter()
+}
+
+func (a *App) clearKindFilter() {
+	a.kindFilter = ""
+	a.redraw()
+	a.updateFooter()
+}
+
+func (a *App) updateFooter() {
 	a.tviewApp.QueueUpdateDraw(func() {
-		a.footer.UpdateFilter("", a.showMineOnly)
+		a.footer.Update(a.filterText, a.showMineOnly, string(a.kindFilter))
 	})
 }
 
