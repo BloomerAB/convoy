@@ -6,10 +6,11 @@ import "time"
 type ResourceKind string
 
 const (
-	KindKustomization ResourceKind = "Kustomization"
-	KindHelmRelease   ResourceKind = "HelmRelease"
-	KindGitRepository ResourceKind = "GitRepository"
-	KindWorkflowRun   ResourceKind = "WorkflowRun"
+	KindKustomization  ResourceKind = "Kustomization"
+	KindHelmRelease    ResourceKind = "HelmRelease"
+	KindHelmRepository ResourceKind = "HelmRepository"
+	KindGitRepository  ResourceKind = "GitRepository"
+	KindWorkflowRun    ResourceKind = "WorkflowRun"
 )
 
 // Resource is a normalized representation of any monitored resource.

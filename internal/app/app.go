@@ -133,6 +133,7 @@ func (a *App) startWatchers(ctx context.Context) {
 		watchers := []dao.Watcher{
 			dao.NewKustomizationDAO(cc, func() {}),
 			dao.NewHelmReleaseDAO(cc, func() {}),
+			dao.NewHelmRepositoryDAO(cc, func() {}),
 			dao.NewGitRepositoryDAO(cc, func() {}),
 		}
 		for _, w := range watchers {
@@ -496,6 +497,8 @@ func (a *App) onCommand(text string) {
 		a.pushKindView(model.KindKustomization, false)
 	case "hr", "helmrelease", "helmreleases":
 		a.pushKindView(model.KindHelmRelease, false)
+	case "helmrepo", "helmrepository", "helmrepositories":
+		a.pushKindView(model.KindHelmRepository, false)
 	case "gitrepo", "gitrepository", "gitrepositories":
 		a.pushKindView(model.KindGitRepository, false)
 	case "all", "dash", "dashboard":

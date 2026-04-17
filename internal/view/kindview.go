@@ -42,6 +42,8 @@ func (kv *KindView) Title() string {
 		return "Kustomizations"
 	case model.KindHelmRelease:
 		return "HelmReleases"
+	case model.KindHelmRepository:
+		return "HelmRepositories"
 	case model.KindGitRepository:
 		return "GitRepositories"
 	case model.KindWorkflowRun:

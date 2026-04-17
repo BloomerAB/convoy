@@ -30,6 +30,11 @@ var (
 		Version:  "v1",
 		Resource: "gitrepositories",
 	}
+	HelmRepositoryGVR = schema.GroupVersionResource{
+		Group:    "source.toolkit.fluxcd.io",
+		Version:  "v1",
+		Resource: "helmrepositories",
+	}
 )
 
 // FluxWatcher watches Flux CRDs on a single cluster via list+watch.
@@ -189,7 +194,7 @@ func extractRevision(obj unstructured.Unstructured, kind model.ResourceKind) str
 			rev, _, _ = unstructured.NestedString(obj.Object, "status", "lastAttemptedRevision")
 		}
 		return rev
-	case model.KindGitRepository:
+	case model.KindGitRepository, model.KindHelmRepository:
 		artifact, found, _ := unstructured.NestedMap(obj.Object, "status", "artifact")
 		if found {
 			rev, _ := artifact["revision"].(string)
