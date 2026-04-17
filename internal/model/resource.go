@@ -23,6 +23,9 @@ type Resource struct {
 	Message        string
 	Revision       string
 	LastTransition time.Time
+	Actor          string // GitHub username who triggered the run
+	Repo           string // GitHub repo (org/name) for workflow runs
+	Branch         string // Branch name for workflow runs
 }
 
 // SortKey returns a comparable key for sorting: failures first, then by transition time (newest first).

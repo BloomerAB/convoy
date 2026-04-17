@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/bloomerab/convoy/internal/model"
-	"github.com/bloomerab/convoy/internal/ui"
 	"github.com/rivo/tview"
 )
 
@@ -21,23 +20,33 @@ func NewHeader() *Header {
 	return &Header{TextView: tv}
 }
 
-func (h *Header) Update(resources []model.Resource, clusterCount int) {
+func (h *Header) Update(resources []model.Resource, clusterCount int, mineOnly bool) {
 	failures := 0
+	ghaCount := 0
 	for _, r := range resources {
 		if r.Health.IsFailed() {
 			failures++
+		}
+		if r.Kind == model.KindWorkflowRun {
+			ghaCount++
 		}
 	}
 
 	var failText string
 	if failures > 0 {
-		failText = fmt.Sprintf("  [%s]%d failing[-]", colorTag(ui.ColorFailed), failures)
+		failText = fmt.Sprintf("  [red]%d failing[-]", failures)
 	}
 
-	h.SetText(fmt.Sprintf("[%s]convoy[-]  %d clusters%s",
-		colorTag(ui.ColorTitle), clusterCount, failText))
-}
+	mineText := ""
+	if mineOnly {
+		mineText = "  [yellow][mine][-]"
+	}
 
-func colorTag(c interface{}) string {
-	return fmt.Sprintf("%v", c)
+	ghaText := ""
+	if ghaCount > 0 {
+		ghaText = fmt.Sprintf("  %d GHA runs", ghaCount)
+	}
+
+	h.SetText(fmt.Sprintf("[white::b]convoy[-]  %d clusters%s%s%s",
+		clusterCount, ghaText, failText, mineText))
 }

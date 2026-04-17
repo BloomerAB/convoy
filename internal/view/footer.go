@@ -14,6 +14,18 @@ func NewFooter() *Footer {
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignLeft)
 	tv.SetBorderPadding(0, 0, 1, 1)
-	tv.SetText("[darkcyan]:cmd  /filter  ↑↓ scroll  Enter detail  q quit  ? help[-]")
+	tv.SetText(footerText(false))
 	return &Footer{TextView: tv}
+}
+
+func (f *Footer) UpdateMineToggle(mineOnly bool) {
+	f.SetText(footerText(mineOnly))
+}
+
+func footerText(mineOnly bool) string {
+	mineHint := "m:mine"
+	if mineOnly {
+		mineHint = "m:all"
+	}
+	return "[darkcyan]:cmd  /filter  d:describe  " + mineHint + "  r:refresh  q:quit  ?:help[-]"
 }

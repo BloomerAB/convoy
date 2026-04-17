@@ -19,17 +19,19 @@ const refreshInterval = 2 * time.Second
 
 // App is the main application.
 type App struct {
-	tviewApp  *tview.Application
-	cfg       config.Config
-	factory   *client.ClusterFactory
-	pageStack *PageStack
-	header    *view.Header
-	footer    *view.Footer
-	dashboard *view.Dashboard
-	cmdInput  *view.CmdBar
-	layout    *tview.Flex
-	watchers  []dao.Watcher
-	cancel    context.CancelFunc
+	tviewApp     *tview.Application
+	cfg          config.Config
+	factory      *client.ClusterFactory
+	ghPoller     *client.GitHubPoller
+	pageStack    *PageStack
+	header       *view.Header
+	footer       *view.Footer
+	dashboard    *view.Dashboard
+	cmdInput     *view.CmdBar
+	layout       *tview.Flex
+	watchers     []dao.Watcher
+	cancel       context.CancelFunc
+	showMineOnly bool
 }
 
 func New(cfg config.Config) *App {
@@ -63,6 +65,16 @@ func (a *App) Init() error {
 
 	if len(a.factory.Clients()) == 0 {
 		return fmt.Errorf("no clusters reachable")
+	}
+
+	// GitHub poller (optional — only if org is configured)
+	if a.cfg.GitHub.Org != "" {
+		poller, err := client.NewGitHubPoller(a.cfg.GitHub)
+		if err != nil {
+			log.Printf("WARN: GitHub Actions disabled: %v", err)
+		} else {
+			a.ghPoller = poller
+		}
 	}
 
 	a.header = view.NewHeader()
@@ -114,11 +126,19 @@ func (a *App) startWatchers(ctx context.Context) {
 			}(w)
 		}
 	}
+
+	if a.ghPoller != nil {
+		w := dao.NewWorkflowDAO(a.ghPoller)
+		a.watchers = append(a.watchers, w)
+		go func() {
+			if err := w.Start(ctx); err != nil && ctx.Err() == nil {
+				log.Printf("github watcher error: %v", err)
+			}
+		}()
+	}
 }
 
-// refreshLoop redraws the UI on a fixed interval — watchers just populate the cache.
 func (a *App) refreshLoop(ctx context.Context) {
-	// Initial draw after a brief delay to let watchers populate
 	time.Sleep(1 * time.Second)
 	a.redraw()
 
@@ -141,9 +161,39 @@ func (a *App) redraw() {
 		all = append(all, w.Resources()...)
 	}
 
+	filtered := a.filterResources(all)
+
 	a.tviewApp.QueueUpdateDraw(func() {
-		a.dashboard.Refresh(all)
-		a.header.Update(all, len(a.factory.Clients()))
+		a.dashboard.Refresh(filtered)
+		a.header.Update(filtered, len(a.factory.Clients()), a.showMineOnly)
+	})
+}
+
+func (a *App) filterResources(resources []model.Resource) []model.Resource {
+	if !a.showMineOnly || a.ghPoller == nil {
+		return resources
+	}
+
+	username := a.ghPoller.Username()
+	if username == "" {
+		return resources
+	}
+
+	var result []model.Resource
+	for _, r := range resources {
+		// Keep all Flux resources, filter GHA runs by actor
+		if r.Kind != model.KindWorkflowRun || r.Actor == username {
+			result = append(result, r)
+		}
+	}
+	return result
+}
+
+func (a *App) toggleMine() {
+	a.showMineOnly = !a.showMineOnly
+	a.redraw()
+	a.tviewApp.QueueUpdateDraw(func() {
+		a.footer.UpdateMineToggle(a.showMineOnly)
 	})
 }
 
@@ -167,6 +217,9 @@ func (a *App) handleInput(event *tcell.EventKey) *tcell.EventKey {
 			return nil
 		case 'r':
 			a.redraw()
+			return nil
+		case 'm':
+			a.toggleMine()
 			return nil
 		case ':':
 			a.showCmdBar(":")
@@ -241,6 +294,7 @@ func (a *App) restartWatchers() {
 	}
 
 	a.factory = client.NewClusterFactory()
+	a.ghPoller = nil
 	a.watchers = nil
 
 	clusters := a.cfg.Clusters
@@ -256,6 +310,15 @@ func (a *App) restartWatchers() {
 	for _, c := range clusters {
 		if err := a.factory.AddCluster(c); err != nil {
 			log.Printf("WARN: skipping cluster %s: %v", c.Name, err)
+		}
+	}
+
+	if a.cfg.GitHub.Org != "" {
+		poller, err := client.NewGitHubPoller(a.cfg.GitHub)
+		if err != nil {
+			log.Printf("WARN: GitHub Actions disabled: %v", err)
+		} else {
+			a.ghPoller = poller
 		}
 	}
 

@@ -31,7 +31,9 @@ func (dv *DescribeView) render(r model.Resource) {
 	var b strings.Builder
 
 	field := func(label, value string) {
-		fmt.Fprintf(&b, "[darkcyan]%-18s[-] %s\n", label+":", value)
+		if value != "" {
+			fmt.Fprintf(&b, "[darkcyan]%-18s[-] %s\n", label+":", value)
+		}
 	}
 
 	field("Name", r.Name)
@@ -39,6 +41,13 @@ func (dv *DescribeView) render(r model.Resource) {
 	field("Namespace", r.Namespace)
 	field("Cluster", r.Cluster)
 	field("Environment", r.Environment)
+
+	if r.Kind == model.KindWorkflowRun {
+		field("Repo", r.Repo)
+		field("Branch", r.Branch)
+		field("Actor", r.Actor)
+	}
+
 	b.WriteString("\n")
 
 	statusColor := "green"
@@ -49,9 +58,7 @@ func (dv *DescribeView) render(r model.Resource) {
 	}
 	fmt.Fprintf(&b, "[darkcyan]%-18s[-] [%s]%s %s[-]\n", "Status:", statusColor, r.Health.Symbol(), r.Health.String())
 
-	if r.Revision != "" {
-		field("Revision", r.Revision)
-	}
+	field("Revision", r.Revision)
 	if !r.LastTransition.IsZero() {
 		field("Last Transition", r.LastTransition.Format("2006-01-02 15:04:05 MST"))
 	}

@@ -2,6 +2,7 @@ package render
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/bloomerab/convoy/internal/model"
@@ -9,7 +10,7 @@ import (
 
 // ResourceHeader returns the column headers for the dashboard table.
 func ResourceHeader() []string {
-	return []string{"", "CLUSTER", "KIND", "NAME", "STATUS", "MESSAGE", "REVISION", "AGE"}
+	return []string{"", "NAME", "KIND", "CLUSTER", "STATUS", "MESSAGE", "REVISION", "AGE"}
 }
 
 // ResourceRow renders any resource to table cells.
@@ -24,11 +25,26 @@ func ResourceRow(r model.Resource) []string {
 		msg = msg[:57] + "..."
 	}
 
+	name := r.Name
+	if r.Kind == model.KindWorkflowRun {
+		// Show repo/workflow for GHA runs
+		repo := r.Repo
+		if idx := strings.LastIndex(repo, "/"); idx >= 0 {
+			repo = repo[idx+1:]
+		}
+		name = repo + "/" + r.Name
+	}
+
+	cluster := r.Cluster
+	if r.Kind == model.KindWorkflowRun {
+		cluster = r.Branch
+	}
+
 	return []string{
 		r.Health.Symbol(),
-		r.Cluster,
+		name,
 		kindShort(r.Kind),
-		r.Name,
+		cluster,
 		r.Health.String(),
 		msg,
 		rev,
@@ -39,13 +55,13 @@ func ResourceRow(r model.Resource) []string {
 func kindShort(k model.ResourceKind) string {
 	switch k {
 	case model.KindKustomization:
-		return "Kustomization"
+		return "Ks"
 	case model.KindHelmRelease:
-		return "HelmRelease"
+		return "Hr"
 	case model.KindGitRepository:
 		return "GitRepo"
 	case model.KindWorkflowRun:
-		return "Workflow"
+		return "GHA"
 	default:
 		return string(k)
 	}
