@@ -44,6 +44,7 @@ type App struct {
 	kindFilter     model.ResourceKind  // empty = all kinds
 	runLogResource *model.Resource     // resource shown in current runlog view
 	kindView       *view.KindView     // active kind page (nil when on dashboard)
+	treeView       *view.TreeView     // active tree view (nil when not on tree)
 
 	// snapshot is the latest resource collection, updated by background goroutine.
 	// The UI goroutine only reads this — never touches watcher locks.
@@ -339,6 +340,8 @@ func (a *App) selectedResource() *model.Resource {
 		return a.kindView.SelectedResource()
 	case cur == "runlog":
 		return a.runLogResource
+	case cur == "tree" && a.treeView != nil:
+		return a.treeView.SelectedResource()
 	}
 	return nil
 }
@@ -430,6 +433,7 @@ func (a *App) showTree() {
 func (a *App) showTreeForCluster(cluster string) {
 	all := a.getSnapshot()
 	tv := view.NewFluxTreeView(all, cluster)
+	a.treeView = tv
 	a.pageStack.Push("tree", tv)
 }
 
@@ -498,6 +502,9 @@ func (a *App) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		if a.pageStack.Current() != "dashboard" {
 			if strings.HasPrefix(a.pageStack.Current(), "kind-") {
 				a.kindView = nil
+			}
+			if a.pageStack.Current() == "tree" {
+				a.treeView = nil
 			}
 			a.pageStack.Pop()
 			return nil

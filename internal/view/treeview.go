@@ -15,6 +15,18 @@ type TreeView struct {
 	*tview.TreeView
 }
 
+// SelectedResource returns the resource for the currently selected tree node.
+func (tv *TreeView) SelectedResource() *model.Resource {
+	node := tv.GetCurrentNode()
+	if node == nil {
+		return nil
+	}
+	if r, ok := node.GetReference().(*model.Resource); ok {
+		return r
+	}
+	return nil
+}
+
 func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 	// Filter to this cluster's Flux resources
 	var clusterRes []model.Resource
@@ -133,9 +145,11 @@ func makeNode(r model.Resource) *tview.TreeNode {
 		}
 		label += fmt.Sprintf(" [#FF5050]%s[-]", msg)
 	}
+	rCopy := r
 	node := tview.NewTreeNode(label).
 		SetSelectable(true).
-		SetExpanded(true)
+		SetExpanded(true).
+		SetReference(&rCopy)
 	return node
 }
 
