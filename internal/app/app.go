@@ -434,7 +434,7 @@ func (a *App) showTreeForCluster(cluster string) {
 	all := a.getSnapshot()
 	tv := view.NewFluxTreeView(all, cluster)
 	a.treeView = tv
-	a.pageStack.Push("tree", tv)
+	a.pageStack.Switch("tree", tv)
 }
 
 func (a *App) showClusterPicker() {
@@ -463,7 +463,7 @@ func (a *App) showClusterPicker() {
 		SetTitle(" Select cluster for tree view ").
 		SetBorderColor(tcell.ColorCornflowerBlue)
 
-	a.pageStack.Push("tree-picker", list)
+	a.pageStack.Switch("tree-picker", list)
 }
 
 func (a *App) showHelp() {
@@ -644,14 +644,17 @@ func (a *App) pushKindView(kind model.ResourceKind, activeOnly bool) {
 	all := a.getSnapshot()
 	kv.Refresh(all)
 
-	a.pageStack.Push("kind-"+string(kind), kv)
+	a.pageStack.Switch("kind-"+string(kind), kv)
 }
 
 func (a *App) popToHome() {
+	// Switch clears everything above dashboard, then we just need to
+	// show dashboard again by popping the current Switch'd view
 	for a.pageStack.Current() != "dashboard" {
 		a.pageStack.Pop()
 	}
 	a.kindView = nil
+	a.treeView = nil
 }
 
 func (a *App) updateFooterDirect() {
@@ -661,7 +664,7 @@ func (a *App) updateFooterDirect() {
 func (a *App) execConfig() {
 	files := view.DiscoverConfigFiles()
 	cl := view.NewConfigListView(files, a.onConfigSelect, a.onConfigEdit)
-	a.pageStack.Push("config", cl)
+	a.pageStack.Switch("config", cl)
 }
 
 func (a *App) onConfigSelect(f view.ConfigFile) {
