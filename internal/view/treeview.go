@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/bloomerab/convoy/internal/model"
-	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -174,9 +173,7 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 	tree := tview.NewTreeView().
 		SetRoot(root).
 		SetCurrentNode(root)
-	tree.SetBorder(true).
-		SetTitle(fmt.Sprintf(" Flux Tree: %s ", cluster)).
-		SetBorderColor(tcell.ColorCornflowerBlue)
+	tree.SetBorderPadding(0, 0, 1, 1)
 
 	return &TreeView{TreeView: tree}
 }

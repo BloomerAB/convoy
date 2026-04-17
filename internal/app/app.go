@@ -499,9 +499,7 @@ func (a *App) showClusterPicker() {
 			a.showTreeForCluster(n)
 		})
 	}
-	list.SetBorder(true).
-		SetTitle(" Select cluster for tree view ").
-		SetBorderColor(tcell.ColorCornflowerBlue)
+	list.SetBorderPadding(0, 0, 1, 1)
 
 	a.pageStack.Push("tree-picker", list)
 }

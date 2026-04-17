@@ -1,7 +1,6 @@
 package view
 
 import (
-	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -49,9 +48,7 @@ func NewHelpView() *tview.TextView {
 	tv := tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true)
-	tv.SetBorder(true).
-		SetTitle(" Help ").
-		SetBorderColor(tcell.ColorCornflowerBlue)
+	tv.SetBorderPadding(0, 0, 1, 1)
 	tv.SetText(helpText)
 	return tv
 }

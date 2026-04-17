@@ -18,9 +18,7 @@ func NewConfigDetailView(file ConfigFile, onEdit func(ConfigFile)) *ConfigDetail
 	tv := tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true)
-	tv.SetBorder(true).
-		SetTitle(" " + file.Name + " (e: edit, Esc: back) ").
-		SetBorderColor(tcell.ColorCornflowerBlue)
+	tv.SetBorderPadding(0, 0, 1, 1)
 
 	cd := &ConfigDetailView{
 		TextView: tv,

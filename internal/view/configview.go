@@ -29,9 +29,7 @@ func NewConfigListView(files []ConfigFile, onSelect func(ConfigFile), onEdit fun
 		SetSelectable(true, false).
 		SetFixed(1, 0).
 		SetSeparator(' ')
-	table.SetBorder(true).
-		SetTitle(" Config (Enter: view, e: edit, Esc: back) ").
-		SetBorderColor(tcell.ColorCornflowerBlue)
+	table.SetBorderPadding(0, 0, 1, 1)
 
 	cl := &ConfigListView{
 		Table:    table,

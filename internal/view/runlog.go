@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/bloomerab/convoy/internal/model"
-	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -24,9 +23,7 @@ func NewRunLogView(r model.Resource) *RunLogView {
 	tv := tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true)
-	tv.SetBorder(true).
-		SetTitle(fmt.Sprintf(" %s/%s #%s (Esc: back) ", repo, r.Name, r.Revision)).
-		SetBorderColor(tcell.ColorCornflowerBlue)
+	tv.SetBorderPadding(0, 0, 1, 1)
 	tv.SetText("[#FFFF64]Loading jobs...[-]")
 
 	return &RunLogView{TextView: tv, Resource: r}

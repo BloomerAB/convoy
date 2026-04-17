@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/bloomerab/convoy/internal/model"
-	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -18,9 +17,7 @@ func NewDescribeView(r model.Resource) *DescribeView {
 	tv := tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true)
-	tv.SetBorder(true).
-		SetTitle(fmt.Sprintf(" %s/%s (Esc: back) ", r.Kind, r.Name)).
-		SetBorderColor(tcell.ColorCornflowerBlue)
+	tv.SetBorderPadding(0, 0, 1, 1)
 
 	dv := &DescribeView{TextView: tv}
 	dv.render(r)
