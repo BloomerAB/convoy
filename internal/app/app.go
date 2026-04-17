@@ -215,8 +215,11 @@ func (a *App) redraw() {
 	all := a.getSnapshot()
 	filtered := a.filterResources(all)
 
+	log.Printf("redraw: queuing update (%d resources, %d filtered)", len(all), len(filtered))
 	a.tviewApp.QueueUpdateDraw(func() {
+		log.Printf("redraw: applying update")
 		a.applyUpdate(filtered)
+		log.Printf("redraw: done")
 	})
 }
 

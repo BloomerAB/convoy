@@ -77,7 +77,7 @@ func kindShort(k model.ResourceKind) string {
 	case model.KindKustomization:
 		return "Kustomize"
 	case model.KindHelmRelease:
-		return "Helm"
+		return "HelmRelease"
 	case model.KindGitRepository:
 		return "GitRepo"
 	case model.KindWorkflowRun:
