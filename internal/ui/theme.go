@@ -3,10 +3,10 @@ package ui
 import "github.com/gdamore/tcell/v2"
 
 var (
-	ColorReady       = tcell.ColorGreen
+	ColorReady       = tcell.ColorLightGreen
 	ColorFailed      = tcell.ColorRed
 	ColorProgressing = tcell.ColorYellow
-	ColorSuspended   = tcell.ColorGray
+	ColorSuspended   = tcell.ColorLightSlateGray
 	ColorUnknown     = tcell.ColorWhite
 	ColorHeader      = tcell.ColorCornflowerBlue
 	ColorTitle       = tcell.ColorWhite
