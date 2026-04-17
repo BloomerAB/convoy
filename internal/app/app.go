@@ -424,12 +424,6 @@ func (a *App) showRunLogFor(r *model.Resource) {
 }
 
 func (a *App) showTree() {
-	// If a resource is selected, show tree for that cluster
-	if r := a.selectedResource(); r != nil && r.Kind != model.KindWorkflowRun {
-		a.showTreeForCluster(r.Cluster)
-		return
-	}
-	// Otherwise show picker
 	a.showClusterPicker()
 }
 
