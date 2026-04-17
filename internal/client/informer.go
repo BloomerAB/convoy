@@ -1,0 +1,234 @@
+package client
+
+import (
+	"context"
+	"fmt"
+	"sync"
+	"time"
+
+	"github.com/bloomerab/convoy/internal/model"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/dynamic"
+)
+
+var (
+	KustomizationGVR = schema.GroupVersionResource{
+		Group:    "kustomize.toolkit.fluxcd.io",
+		Version:  "v1",
+		Resource: "kustomizations",
+	}
+	HelmReleaseGVR = schema.GroupVersionResource{
+		Group:    "helm.toolkit.fluxcd.io",
+		Version:  "v2",
+		Resource: "helmreleases",
+	}
+	GitRepositoryGVR = schema.GroupVersionResource{
+		Group:    "source.toolkit.fluxcd.io",
+		Version:  "v1",
+		Resource: "gitrepositories",
+	}
+)
+
+// FluxWatcher watches Flux CRDs on a single cluster via list+watch.
+type FluxWatcher struct {
+	client      *ClusterClient
+	gvr         schema.GroupVersionResource
+	kind        model.ResourceKind
+	mu          sync.RWMutex
+	resources   map[string]model.Resource
+	onChange    func()
+}
+
+// NewFluxWatcher creates a watcher for a specific Flux CRD on a cluster.
+func NewFluxWatcher(client *ClusterClient, gvr schema.GroupVersionResource, kind model.ResourceKind, onChange func()) *FluxWatcher {
+	return &FluxWatcher{
+		client:    client,
+		gvr:       gvr,
+		kind:      kind,
+		resources: make(map[string]model.Resource),
+		onChange:  onChange,
+	}
+}
+
+// Start begins list+watch. Blocks until ctx is cancelled. Reconnects on error.
+func (w *FluxWatcher) Start(ctx context.Context) error {
+	for {
+		if err := w.listAndWatch(ctx); err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			// Reconnect after brief pause
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(5 * time.Second):
+			}
+		}
+	}
+}
+
+func (w *FluxWatcher) listAndWatch(ctx context.Context) error {
+	client := w.client.Dynamic.Resource(w.gvr)
+
+	list, err := client.List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("list %s on %s: %w", w.gvr.Resource, w.client.Name, err)
+	}
+
+	w.mu.Lock()
+	w.resources = make(map[string]model.Resource, len(list.Items))
+	for _, item := range list.Items {
+		r := w.unstructuredToResource(item)
+		w.resources[r.Namespace+"/"+r.Name] = r
+	}
+	w.mu.Unlock()
+	w.onChange()
+
+	watcher, err := client.Watch(ctx, metav1.ListOptions{
+		ResourceVersion: list.GetResourceVersion(),
+	})
+	if err != nil {
+		return fmt.Errorf("watch %s on %s: %w", w.gvr.Resource, w.client.Name, err)
+	}
+	defer watcher.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case event, ok := <-watcher.ResultChan():
+			if !ok {
+				return fmt.Errorf("watch channel closed")
+			}
+			w.handleEvent(event)
+		}
+	}
+}
+
+func (w *FluxWatcher) handleEvent(event watch.Event) {
+	obj, ok := event.Object.(*unstructured.Unstructured)
+	if !ok {
+		return
+	}
+
+	key := obj.GetNamespace() + "/" + obj.GetName()
+
+	w.mu.Lock()
+	switch event.Type {
+	case watch.Added, watch.Modified:
+		w.resources[key] = w.unstructuredToResource(*obj)
+	case watch.Deleted:
+		delete(w.resources, key)
+	}
+	w.mu.Unlock()
+	w.onChange()
+}
+
+func (w *FluxWatcher) unstructuredToResource(obj unstructured.Unstructured) model.Resource {
+	r := model.Resource{
+		Cluster:     w.client.Name,
+		Environment: w.client.Environment,
+		Kind:        w.kind,
+		Namespace:   obj.GetNamespace(),
+		Name:        obj.GetName(),
+		Health:      model.HealthUnknown,
+	}
+
+	conditions, found, _ := unstructured.NestedSlice(obj.Object, "status", "conditions")
+	if found {
+		r.Health, r.Message = extractHealth(conditions)
+	}
+
+	r.Revision = extractRevision(obj, w.kind)
+	r.LastTransition = extractLastTransition(conditions)
+
+	return r
+}
+
+func extractHealth(conditions []interface{}) (model.HealthStatus, string) {
+	for _, c := range conditions {
+		cond, ok := c.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		condType, _ := cond["type"].(string)
+		if condType != "Ready" {
+			continue
+		}
+		status, _ := cond["status"].(string)
+		message, _ := cond["message"].(string)
+		switch status {
+		case "True":
+			return model.HealthReady, message
+		case "False":
+			reason, _ := cond["reason"].(string)
+			if reason == "Progressing" || reason == "ArtifactOutdated" {
+				return model.HealthProgressing, message
+			}
+			return model.HealthFailed, message
+		default:
+			return model.HealthProgressing, message
+		}
+	}
+	return model.HealthUnknown, ""
+}
+
+func extractRevision(obj unstructured.Unstructured, kind model.ResourceKind) string {
+	switch kind {
+	case model.KindKustomization:
+		rev, _, _ := unstructured.NestedString(obj.Object, "status", "lastAppliedRevision")
+		return rev
+	case model.KindHelmRelease:
+		rev, _, _ := unstructured.NestedString(obj.Object, "status", "lastAppliedRevision")
+		if rev == "" {
+			rev, _, _ = unstructured.NestedString(obj.Object, "status", "lastAttemptedRevision")
+		}
+		return rev
+	case model.KindGitRepository:
+		artifact, found, _ := unstructured.NestedMap(obj.Object, "status", "artifact")
+		if found {
+			rev, _ := artifact["revision"].(string)
+			return rev
+		}
+		return ""
+	default:
+		return ""
+	}
+}
+
+func extractLastTransition(conditions []interface{}) time.Time {
+	for _, c := range conditions {
+		cond, ok := c.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		condType, _ := cond["type"].(string)
+		if condType != "Ready" {
+			continue
+		}
+		ts, _ := cond["lastTransitionTime"].(string)
+		if t, err := time.Parse(time.RFC3339, ts); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
+}
+
+// Resources returns the current cached resources.
+func (w *FluxWatcher) Resources() []model.Resource {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	result := make([]model.Resource, 0, len(w.resources))
+	for _, r := range w.resources {
+		result = append(result, r)
+	}
+	return result
+}
+
+// resourceClient returns the appropriate dynamic resource client for all namespaces.
+func resourceClient(dynClient dynamic.Interface, gvr schema.GroupVersionResource) dynamic.ResourceInterface {
+	return dynClient.Resource(gvr).Namespace("")
+}
