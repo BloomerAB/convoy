@@ -147,7 +147,16 @@ func (w *FluxWatcher) unstructuredToResource(obj unstructured.Unstructured) mode
 		r.Health, r.Message = extractHealth(conditions)
 	}
 
-	// If no Ready condition found, infer from artifact presence
+	// Check if suspended
+	suspended, _, _ := unstructured.NestedBool(obj.Object, "spec", "suspend")
+	if suspended {
+		r.Health = model.HealthSuspended
+		if r.Message == "" {
+			r.Message = "Suspended"
+		}
+	}
+
+	// If still unknown, infer from artifact presence
 	if r.Health == model.HealthUnknown {
 		_, hasArtifact, _ := unstructured.NestedMap(obj.Object, "status", "artifact")
 		if hasArtifact {
@@ -164,30 +173,65 @@ func (w *FluxWatcher) unstructuredToResource(obj unstructured.Unstructured) mode
 }
 
 func extractHealth(conditions []interface{}) (model.HealthStatus, string) {
+	// Parse all conditions into a map for lookup
+	condMap := make(map[string]map[string]string)
 	for _, c := range conditions {
 		cond, ok := c.(map[string]interface{})
 		if !ok {
 			continue
 		}
 		condType, _ := cond["type"].(string)
-		if condType != "Ready" {
+		if condType == "" {
 			continue
 		}
-		status, _ := cond["status"].(string)
-		message, _ := cond["message"].(string)
-		switch status {
-		case "True":
-			return model.HealthReady, message
-		case "False":
-			reason, _ := cond["reason"].(string)
-			if reason == "Progressing" || reason == "ArtifactOutdated" {
-				return model.HealthProgressing, message
+		entry := make(map[string]string)
+		for k, v := range cond {
+			if s, ok := v.(string); ok {
+				entry[k] = s
 			}
-			return model.HealthFailed, message
+		}
+		condMap[condType] = entry
+	}
+
+	// Check Ready first (primary condition)
+	if ready, ok := condMap["Ready"]; ok {
+		switch ready["status"] {
+		case "True":
+			return model.HealthReady, ready["message"]
+		case "False":
+			reason := ready["reason"]
+			if reason == "Progressing" || reason == "ArtifactOutdated" {
+				return model.HealthProgressing, ready["message"]
+			}
+			return model.HealthFailed, ready["message"]
 		default:
-			return model.HealthProgressing, message
+			return model.HealthProgressing, ready["message"]
 		}
 	}
+
+	// No Ready condition — check Stalled
+	if stalled, ok := condMap["Stalled"]; ok && stalled["status"] == "True" {
+		return model.HealthFailed, stalled["message"]
+	}
+
+	// Check Reconciling
+	if reconciling, ok := condMap["Reconciling"]; ok && reconciling["status"] == "True" {
+		return model.HealthProgressing, reconciling["message"]
+	}
+
+	// Check Healthy/HealthDegraded (HelmRelease-specific)
+	if degraded, ok := condMap["HealthDegraded"]; ok && degraded["status"] == "True" {
+		return model.HealthFailed, degraded["message"]
+	}
+	if healthy, ok := condMap["Healthy"]; ok && healthy["status"] == "True" {
+		return model.HealthReady, healthy["message"]
+	}
+
+	// If suspended
+	if len(condMap) == 0 {
+		return model.HealthUnknown, ""
+	}
+
 	return model.HealthUnknown, ""
 }
 
