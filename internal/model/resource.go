@@ -31,6 +31,8 @@ type Resource struct {
 	URL            string        // Web URL (GitHub run URL, etc.)
 	Interval       time.Duration // Flux reconciliation interval
 	NextRun        time.Time     // Estimated next reconciliation
+	SourceRef      string        // Flux: "Kind/namespace/name" of source
+	DependsOn      []string      // Flux: "namespace/name" of dependencies
 }
 
 // SortKey returns a comparable key for sorting:

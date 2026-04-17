@@ -6,6 +6,7 @@ import (
 	"log"
 	"os/exec"
 	"regexp"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -422,6 +423,52 @@ func (a *App) showRunLogFor(r *model.Resource) {
 	}()
 }
 
+func (a *App) showTree() {
+	// If a resource is selected, show tree for that cluster
+	if r := a.selectedResource(); r != nil && r.Kind != model.KindWorkflowRun {
+		a.showTreeForCluster(r.Cluster)
+		return
+	}
+	// Otherwise show picker
+	a.showClusterPicker()
+}
+
+func (a *App) showTreeForCluster(cluster string) {
+	all := a.getSnapshot()
+	tv := view.NewFluxTreeView(all, cluster)
+	a.pageStack.Push("tree", tv)
+}
+
+func (a *App) showClusterPicker() {
+	all := a.getSnapshot()
+	clusters := make(map[string]bool)
+	for _, r := range all {
+		if r.Kind != model.KindWorkflowRun {
+			clusters[r.Cluster] = true
+		}
+	}
+
+	var names []string
+	for c := range clusters {
+		names = append(names, c)
+	}
+	sort.Strings(names)
+
+	list := tview.NewList()
+	for _, name := range names {
+		n := name
+		list.AddItem(n, "", 0, func() {
+			a.pageStack.Pop() // remove picker
+			a.showTreeForCluster(n)
+		})
+	}
+	list.SetBorder(true).
+		SetTitle(" Select cluster for tree view ").
+		SetBorderColor(tcell.ColorCornflowerBlue)
+
+	a.pageStack.Push("tree-picker", list)
+}
+
 func (a *App) showHelp() {
 	hv := view.NewHelpView()
 	a.pageStack.Push("help", hv)
@@ -497,6 +544,9 @@ func (a *App) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		case 'c':
 			a.copyURL()
 			return nil
+		case 't':
+			a.showTree()
+			return nil
 		case '?':
 			a.showHelp()
 			return nil
@@ -566,6 +616,12 @@ func (a *App) onCommand(text string) {
 		a.pushKindView(model.KindGitRepository, false)
 	case "all", "dash", "dashboard":
 		a.popToHome()
+	case "tree":
+		if len(cmd.Args) > 0 {
+			a.showTreeForCluster(cmd.Args[0])
+		} else {
+			a.showTree()
+		}
 	}
 }
 

@@ -14,6 +14,7 @@ const helpText = `[#6EB5FF::b]Keys[-::-]
   [#FFFFFF]l[-]          View GitHub Actions run jobs/steps
   [#FFFFFF]o[-]          Open in browser
   [#FFFFFF]c[-]          Copy URL to clipboard
+  [#FFFFFF]t[-]          Flux dependency tree (per cluster)
   [#FFFFFF]R[-]          Force refresh
   [#FFFFFF]/[-]          Filter (regex across all fields)
   [#FFFFFF]:[-]          Command mode
@@ -28,6 +29,7 @@ const helpText = `[#6EB5FF::b]Keys[-::-]
   [#FFFFFF]:helmrepo[-]          HelmRepositories (all)
   [#FFFFFF]:gitrepo[-]           GitRepositories (all)
   [#FFFFFF]:gha[-] :actions      GitHub Actions (active only)
+  [#FFFFFF]:tree[-] [cluster]    Flux dependency tree
   [#FFFFFF]:all[-] :dashboard    Back to dashboard
   [#FFFFFF]:filter[-] <text>     Set filter
   [#FFFFFF]:nofilter[-] :nf      Clear filter

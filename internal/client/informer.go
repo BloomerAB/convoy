@@ -175,6 +175,8 @@ func (w *FluxWatcher) unstructuredToResource(obj unstructured.Unstructured) mode
 	r.LastTransition = extractLastTransition(conditions)
 	r.Interval = extractInterval(obj)
 	r.NextRun = calculateNextRun(obj, r.Interval)
+	r.SourceRef = extractSourceRef(obj, w.kind)
+	r.DependsOn = extractDependsOn(obj)
 
 	return r
 }
@@ -281,6 +283,78 @@ func extractLastTransition(conditions []interface{}) time.Time {
 		}
 	}
 	return time.Time{}
+}
+
+func extractSourceRef(obj unstructured.Unstructured, kind model.ResourceKind) string {
+	ns := obj.GetNamespace()
+
+	switch kind {
+	case model.KindKustomization:
+		// spec.sourceRef.kind, spec.sourceRef.name, spec.sourceRef.namespace
+		refKind, _, _ := unstructured.NestedString(obj.Object, "spec", "sourceRef", "kind")
+		refName, _, _ := unstructured.NestedString(obj.Object, "spec", "sourceRef", "name")
+		refNs, _, _ := unstructured.NestedString(obj.Object, "spec", "sourceRef", "namespace")
+		if refName == "" {
+			return ""
+		}
+		if refNs == "" {
+			refNs = ns
+		}
+		if refKind == "" {
+			refKind = "GitRepository"
+		}
+		return refKind + "/" + refNs + "/" + refName
+
+	case model.KindHelmRelease:
+		// spec.chart.spec.sourceRef or spec.chartRef
+		refKind, _, _ := unstructured.NestedString(obj.Object, "spec", "chart", "spec", "sourceRef", "kind")
+		refName, _, _ := unstructured.NestedString(obj.Object, "spec", "chart", "spec", "sourceRef", "name")
+		refNs, _, _ := unstructured.NestedString(obj.Object, "spec", "chart", "spec", "sourceRef", "namespace")
+		if refName == "" {
+			// Try chartRef (Flux v2 alternative)
+			refKind, _, _ = unstructured.NestedString(obj.Object, "spec", "chartRef", "kind")
+			refName, _, _ = unstructured.NestedString(obj.Object, "spec", "chartRef", "name")
+			refNs, _, _ = unstructured.NestedString(obj.Object, "spec", "chartRef", "namespace")
+		}
+		if refName == "" {
+			return ""
+		}
+		if refNs == "" {
+			refNs = ns
+		}
+		if refKind == "" {
+			refKind = "HelmRepository"
+		}
+		return refKind + "/" + refNs + "/" + refName
+	}
+
+	return ""
+}
+
+func extractDependsOn(obj unstructured.Unstructured) []string {
+	deps, found, _ := unstructured.NestedSlice(obj.Object, "spec", "dependsOn")
+	if !found {
+		return nil
+	}
+
+	ns := obj.GetNamespace()
+	var result []string
+	for _, d := range deps {
+		dep, ok := d.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		name, _ := dep["name"].(string)
+		depNs, _ := dep["namespace"].(string)
+		if name == "" {
+			continue
+		}
+		if depNs == "" {
+			depNs = ns
+		}
+		result = append(result, depNs+"/"+name)
+	}
+	return result
 }
 
 func extractInterval(obj unstructured.Unstructured) time.Duration {
