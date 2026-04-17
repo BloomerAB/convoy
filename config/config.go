@@ -39,15 +39,23 @@ func DefaultConfig() Config {
 	}
 }
 
+// Path returns the config file path.
+func Path() (string, error) {
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		return "", fmt.Errorf("config dir: %w", err)
+	}
+	return filepath.Join(configDir, "convoy", "config.yaml"), nil
+}
+
 func Load() (Config, error) {
 	cfg := DefaultConfig()
 
-	configDir, err := os.UserConfigDir()
+	path, err := Path()
 	if err != nil {
-		return cfg, fmt.Errorf("config dir: %w", err)
+		return cfg, err
 	}
 
-	path := filepath.Join(configDir, "convoy", "config.yaml")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -73,4 +81,34 @@ func Load() (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// EnsureExists creates the config file with defaults if it doesn't exist.
+func EnsureExists() (string, error) {
+	path, err := Path()
+	if err != nil {
+		return "", err
+	}
+
+	if _, err := os.Stat(path); err == nil {
+		return path, nil
+	}
+
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", fmt.Errorf("create config dir: %w", err)
+	}
+
+	cfg := DefaultConfig()
+	data, err := yaml.Marshal(&cfg)
+	if err != nil {
+		return "", fmt.Errorf("marshal default config: %w", err)
+	}
+
+	header := []byte("# convoy configuration\n# See: https://github.com/BloomerAB/convoy\n\n")
+	if err := os.WriteFile(path, append(header, data...), 0o644); err != nil {
+		return "", fmt.Errorf("write config: %w", err)
+	}
+
+	return path, nil
 }
