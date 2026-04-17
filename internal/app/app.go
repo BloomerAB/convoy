@@ -23,8 +23,9 @@ import (
 const refreshInterval = 2 * time.Second
 
 func drawHLine(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
+	style := tcell.StyleDefault.Foreground(tcell.ColorDimGray).Background(tcell.ColorDefault)
 	for i := x; i < x+width; i++ {
-		screen.SetContent(i, y, '─', nil, tcell.StyleDefault.Foreground(tcell.ColorDimGray))
+		screen.SetContent(i, y, '─', nil, style)
 	}
 	return x, y, width, height
 }
