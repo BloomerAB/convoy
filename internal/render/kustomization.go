@@ -46,13 +46,13 @@ func ResourceRow(r model.Resource) []string {
 func kindShort(k model.ResourceKind) string {
 	switch k {
 	case model.KindKustomization:
-		return "Ks"
+		return "Kustomize"
 	case model.KindHelmRelease:
-		return "Hr"
+		return "Helm"
 	case model.KindGitRepository:
 		return "GitRepo"
 	case model.KindWorkflowRun:
-		return "GHA"
+		return "Actions"
 	default:
 		return string(k)
 	}
