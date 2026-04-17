@@ -12,6 +12,7 @@ import (
 // TreeView shows the Flux dependency tree for a cluster.
 type TreeView struct {
 	*tview.TreeView
+	cluster string
 }
 
 // SelectedResource returns the resource for the currently selected tree node.
@@ -175,7 +176,13 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 		SetCurrentNode(root)
 	tree.SetBorderPadding(0, 0, 1, 1)
 
-	return &TreeView{TreeView: tree}
+	return &TreeView{TreeView: tree, cluster: cluster}
+}
+
+// Refresh rebuilds the tree with fresh data.
+func (tv *TreeView) Refresh(resources []model.Resource) {
+	fresh := NewFluxTreeView(resources, tv.cluster)
+	tv.SetRoot(fresh.GetRoot())
 }
 
 func addSortedChildren(parentNode *tview.TreeNode, children []model.Resource, childrenOf map[string][]model.Resource, added map[string]bool) {

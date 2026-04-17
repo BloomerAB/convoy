@@ -251,6 +251,9 @@ func (a *App) applyUpdate(resources []model.Resource) {
 	if a.kindView != nil {
 		a.kindView.Refresh(resources)
 	}
+	if a.treeView != nil {
+		a.treeView.Refresh(resources)
+	}
 	a.header.Update(resources, len(a.factory.Clients()), a.showMineOnly, a.showAll)
 }
 
