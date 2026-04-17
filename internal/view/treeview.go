@@ -36,28 +36,40 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 		}
 	}
 
-	// Build lookup maps
-	// key: "Kind/namespace/name" → resource
-	byRef := make(map[string]model.Resource)
-	// key: "namespace/name" → resource (for dependsOn lookups within same kind)
-	ksByNsName := make(map[string]model.Resource)
+	// Build lookup: "namespace/name" → resource (for all non-source kinds)
+	// and "Kind/namespace/name" → resource (for sourceRef matching)
+	byNsName := make(map[string]model.Resource)
+	byFullRef := make(map[string]model.Resource)
+	for _, r := range clusterRes {
+		byNsName[r.Namespace+"/"+r.Name] = r
+		byFullRef[string(r.Kind)+"/"+r.Namespace+"/"+r.Name] = r
+	}
+
+	// Build parent→children map based on dependsOn (cross-kind)
+	// A resource is a child of each thing it dependsOn
+	childrenOf := make(map[string][]model.Resource) // parent key → children
+	hasParent := make(map[string]bool)               // child key → true if it has a dependsOn parent
 
 	for _, r := range clusterRes {
-		ref := string(r.Kind) + "/" + r.Namespace + "/" + r.Name
-		byRef[ref] = r
-		if r.Kind == model.KindKustomization {
-			ksByNsName[r.Namespace+"/"+r.Name] = r
+		if r.Kind == model.KindGitRepository || r.Kind == model.KindHelmRepository {
+			continue
+		}
+		for _, dep := range r.DependsOn {
+			childrenOf[dep] = append(childrenOf[dep], r)
+			hasParent[r.Namespace+"/"+r.Name] = true
 		}
 	}
 
-	// Find which resources are referenced (children) so we know the roots
-	isChild := make(map[string]bool)
+	// Resources that reference a source but have no dependsOn → children of that source
+	sourceChildren := make(map[string][]model.Resource) // sourceRef → children
 	for _, r := range clusterRes {
-		if r.SourceRef != "" {
-			isChild[r.SourceRef] = true
+		if r.Kind == model.KindGitRepository || r.Kind == model.KindHelmRepository {
+			continue
 		}
-		for _, dep := range r.DependsOn {
-			isChild[string(r.Kind)+"/"+dep] = true
+		key := r.Namespace + "/" + r.Name
+		if !hasParent[key] && r.SourceRef != "" {
+			sourceChildren[r.SourceRef] = append(sourceChildren[r.SourceRef], r)
+			hasParent[key] = true
 		}
 	}
 
@@ -65,7 +77,7 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 	root := tview.NewTreeNode(fmt.Sprintf("[#FFFFFF::b]%s[-::-]", cluster)).
 		SetSelectable(false)
 
-	// Sources (GitRepository, HelmRepository) are the tree roots
+	// Collect sources
 	var sources []model.Resource
 	for _, r := range clusterRes {
 		if r.Kind == model.KindGitRepository || r.Kind == model.KindHelmRepository {
@@ -76,51 +88,53 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 		return sources[i].Name < sources[j].Name
 	})
 
+	added := make(map[string]bool)
+
 	for _, src := range sources {
+		srcRef := string(src.Kind) + "/" + src.Namespace + "/" + src.Name
+
+		// Get root-level children of this source (no dependsOn)
+		rootChildren := sourceChildren[srcRef]
+		if len(rootChildren) == 0 {
+			// Source with no direct children — still show it but collapsed
+			srcNode := makeNode(src)
+			srcNode.SetExpanded(false)
+			root.AddChild(srcNode)
+			added[src.Namespace+"/"+src.Name] = true
+			continue
+		}
+
 		srcNode := makeNode(src)
 		root.AddChild(srcNode)
+		added[src.Namespace+"/"+src.Name] = true
 
-		// Find Kustomizations/HelmReleases that reference this source
-		srcRef := string(src.Kind) + "/" + src.Namespace + "/" + src.Name
-		var children []model.Resource
-		for _, r := range clusterRes {
-			if r.SourceRef == srcRef {
-				children = append(children, r)
-			}
-		}
-		sort.Slice(children, func(i, j int) bool {
-			return children[i].Name < children[j].Name
+		sort.Slice(rootChildren, func(i, j int) bool {
+			return rootChildren[i].Name < rootChildren[j].Name
 		})
 
-		// Build dependency sub-trees for each child
-		added := make(map[string]bool)
-		for _, child := range children {
-			if !hasDependencies(child) {
-				childNode := makeNode(child)
-				addDependents(childNode, child, clusterRes, added)
-				srcNode.AddChild(childNode)
-				added[child.Namespace+"/"+child.Name] = true
+		for _, child := range rootChildren {
+			childKey := child.Namespace + "/" + child.Name
+			if added[childKey] {
+				continue
 			}
-		}
-		// Add remaining children that have unresolved deps
-		for _, child := range children {
-			key := child.Namespace + "/" + child.Name
-			if !added[key] {
-				childNode := makeNode(child)
-				addDependents(childNode, child, clusterRes, added)
-				srcNode.AddChild(childNode)
-				added[key] = true
-			}
+			added[childKey] = true
+			childNode := makeNode(child)
+			buildSubTree(childNode, child, childrenOf, added)
+			srcNode.AddChild(childNode)
 		}
 	}
 
-	// Add orphans (resources with no source ref and not a source themselves)
+	// Orphans: resources not yet added (no source, no parent)
 	for _, r := range clusterRes {
 		if r.Kind == model.KindGitRepository || r.Kind == model.KindHelmRepository {
 			continue
 		}
-		if r.SourceRef == "" {
-			root.AddChild(makeNode(r))
+		key := r.Namespace + "/" + r.Name
+		if !added[key] {
+			added[key] = true
+			node := makeNode(r)
+			buildSubTree(node, r, childrenOf, added)
+			root.AddChild(node)
 		}
 	}
 
@@ -132,6 +146,27 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 		SetBorderColor(tcell.ColorCornflowerBlue)
 
 	return &TreeView{TreeView: tree}
+}
+
+// buildSubTree recursively adds dependents of a resource as children.
+func buildSubTree(parentNode *tview.TreeNode, parent model.Resource, childrenOf map[string][]model.Resource, added map[string]bool) {
+	parentKey := parent.Namespace + "/" + parent.Name
+	deps := childrenOf[parentKey]
+
+	sort.Slice(deps, func(i, j int) bool {
+		return deps[i].Name < deps[j].Name
+	})
+
+	for _, dep := range deps {
+		depKey := dep.Namespace + "/" + dep.Name
+		if added[depKey] {
+			continue
+		}
+		added[depKey] = true
+		depNode := makeNode(dep)
+		buildSubTree(depNode, dep, childrenOf, added)
+		parentNode.AddChild(depNode)
+	}
 }
 
 func makeNode(r model.Resource) *tview.TreeNode {
@@ -151,40 +186,6 @@ func makeNode(r model.Resource) *tview.TreeNode {
 		SetExpanded(true).
 		SetReference(&rCopy)
 	return node
-}
-
-func addDependents(parentNode *tview.TreeNode, parent model.Resource, all []model.Resource, added map[string]bool) {
-	// Find resources that dependOn this parent
-	parentKey := parent.Namespace + "/" + parent.Name
-	var deps []model.Resource
-	for _, r := range all {
-		if r.Kind != parent.Kind {
-			continue
-		}
-		for _, d := range r.DependsOn {
-			if d == parentKey {
-				deps = append(deps, r)
-				break
-			}
-		}
-	}
-	sort.Slice(deps, func(i, j int) bool {
-		return deps[i].Name < deps[j].Name
-	})
-	for _, dep := range deps {
-		key := dep.Namespace + "/" + dep.Name
-		if added[key] {
-			continue
-		}
-		added[key] = true
-		depNode := makeNode(dep)
-		addDependents(depNode, dep, all, added)
-		parentNode.AddChild(depNode)
-	}
-}
-
-func hasDependencies(r model.Resource) bool {
-	return len(r.DependsOn) > 0
 }
 
 func kindLabel(k model.ResourceKind) string {
