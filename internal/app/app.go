@@ -42,6 +42,7 @@ type App struct {
 	filterText   string             // active / filter (regex)
 	kindFilter     model.ResourceKind  // empty = all kinds
 	runLogResource *model.Resource     // resource shown in current runlog view
+	kindView       *view.KindView     // active kind page (nil when on dashboard)
 
 	// snapshot is the latest resource collection, updated by background goroutine.
 	// The UI goroutine only reads this — never touches watcher locks.
@@ -228,6 +229,9 @@ func (a *App) redrawDirect() {
 
 func (a *App) applyUpdate(resources []model.Resource) {
 	a.dashboard.Refresh(resources, a.showAll)
+	if a.kindView != nil {
+		a.kindView.Refresh(resources)
+	}
 	a.header.Update(resources, len(a.factory.Clients()), a.showMineOnly, a.showAll)
 }
 
@@ -320,26 +324,28 @@ func (a *App) toggleShowAll() {
 	a.updateFooterDirect()
 }
 
-func (a *App) openInBrowser() {
-	var url string
-	switch a.pageStack.Current() {
-	case "dashboard":
-		if r := a.dashboard.SelectedResource(); r != nil {
-			url = r.URL
-		}
-	case "runlog":
-		if a.runLogResource != nil {
-			url = a.runLogResource.URL
-		}
+// selectedResource returns the resource under the cursor in whatever list view is active.
+func (a *App) selectedResource() *model.Resource {
+	cur := a.pageStack.Current()
+	switch {
+	case cur == "dashboard":
+		return a.dashboard.SelectedResource()
+	case a.kindView != nil && strings.HasPrefix(cur, "kind-"):
+		return a.kindView.SelectedResource()
+	case cur == "runlog":
+		return a.runLogResource
 	}
-	if url != "" {
-		_ = exec.Command("open", url).Start()
+	return nil
+}
+
+func (a *App) openInBrowser() {
+	if r := a.selectedResource(); r != nil && r.URL != "" {
+		_ = exec.Command("open", r.URL).Start()
 	}
 }
 
-func (a *App) showRunLog() {
-	r := a.dashboard.SelectedResource()
-	if r == nil || r.Kind != model.KindWorkflowRun || a.ghPoller == nil {
+func (a *App) showRunLogFor(r *model.Resource) {
+	if a.ghPoller == nil {
 		return
 	}
 
@@ -391,6 +397,9 @@ func (a *App) handleInput(event *tcell.EventKey) *tcell.EventKey {
 			return nil
 		}
 		if a.pageStack.Current() != "dashboard" {
+			if strings.HasPrefix(a.pageStack.Current(), "kind-") {
+				a.kindView = nil
+			}
 			a.pageStack.Pop()
 			return nil
 		}
@@ -410,14 +419,14 @@ func (a *App) handleInput(event *tcell.EventKey) *tcell.EventKey {
 			a.toggleShowAll()
 			return nil
 		case 'd':
-			if a.pageStack.Current() == "dashboard" {
-				a.dashboard.DescribeSelected()
+			if r := a.selectedResource(); r != nil {
+				a.onDescribe(*r)
 				return nil
 			}
 			return event
 		case 'l':
-			if a.pageStack.Current() == "dashboard" {
-				a.showRunLog()
+			if r := a.selectedResource(); r != nil && r.Kind == model.KindWorkflowRun {
+				a.showRunLogFor(r)
 				return nil
 			}
 			return event
@@ -479,15 +488,15 @@ func (a *App) onCommand(text string) {
 	case "nofilter", "nf":
 		a.clearFilter()
 	case "gha", "actions", "workflows":
-		a.setKindFilter(model.KindWorkflowRun)
+		a.pushKindView(model.KindWorkflowRun, true)
 	case "ks", "kustomization", "kustomizations":
-		a.setKindFilter(model.KindKustomization)
+		a.pushKindView(model.KindKustomization, false)
 	case "hr", "helmrelease", "helmreleases":
-		a.setKindFilter(model.KindHelmRelease)
+		a.pushKindView(model.KindHelmRelease, false)
 	case "gitrepo", "gitrepository", "gitrepositories":
-		a.setKindFilter(model.KindGitRepository)
+		a.pushKindView(model.KindGitRepository, false)
 	case "all", "dash", "dashboard":
-		a.clearKindFilter()
+		a.popToHome()
 	}
 }
 
@@ -503,16 +512,21 @@ func (a *App) clearFilter() {
 	a.updateFooterDirect()
 }
 
-func (a *App) setKindFilter(kind model.ResourceKind) {
-	a.kindFilter = kind
-	a.redrawDirect()
-	a.updateFooterDirect()
+func (a *App) pushKindView(kind model.ResourceKind, activeOnly bool) {
+	kv := view.NewKindView(kind, activeOnly, a.onDescribe)
+	a.kindView = kv
+
+	all := a.getSnapshot()
+	kv.Refresh(all)
+
+	a.pageStack.Push("kind-"+string(kind), kv)
 }
 
-func (a *App) clearKindFilter() {
-	a.kindFilter = ""
-	a.redrawDirect()
-	a.updateFooterDirect()
+func (a *App) popToHome() {
+	for a.pageStack.Current() != "dashboard" {
+		a.pageStack.Pop()
+	}
+	a.kindView = nil
 }
 
 func (a *App) updateFooterDirect() {

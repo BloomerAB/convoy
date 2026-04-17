@@ -17,9 +17,9 @@ func (h HealthStatus) String() string {
 	case HealthFailed:
 		return "Failed"
 	case HealthProgressing:
-		return "Progressing"
+		return "Sync"
 	case HealthSuspended:
-		return "Suspended"
+		return "Paused"
 	case HealthReady:
 		return "Ready"
 	default:
