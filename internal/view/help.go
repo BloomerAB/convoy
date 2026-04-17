@@ -9,11 +9,12 @@ const helpText = `[#6EB5FF::b]Keys[-::-]
 
   [#FFFFFF]a[-]          Toggle show all / active only
   [#FFFFFF]m[-]          Toggle mine / all (GitHub Actions)
+  [#FFFFFF]r[-]          Reconcile (Flux) / Rerun (GitHub Actions)
   [#FFFFFF]d[-]          Describe selected resource
   [#FFFFFF]l[-]          View GitHub Actions run jobs/steps
-  [#FFFFFF]o[-]          Open in browser (GitHub Actions)
+  [#FFFFFF]o[-]          Open in browser
   [#FFFFFF]c[-]          Copy URL to clipboard
-  [#FFFFFF]r[-]          Force refresh
+  [#FFFFFF]R[-]          Force refresh
   [#FFFFFF]/[-]          Filter (regex across all fields)
   [#FFFFFF]:[-]          Command mode
   [#FFFFFF]Esc[-]        Clear filter / go back

@@ -215,6 +215,16 @@ func (p *GitHubPoller) Resources() []model.Resource {
 	return result
 }
 
+// RerunWorkflow re-runs a GitHub Actions workflow run.
+func (p *GitHubPoller) RerunWorkflow(ctx context.Context, repo string, runID int64) error {
+	parts := strings.SplitN(repo, "/", 2)
+	if len(parts) != 2 {
+		return fmt.Errorf("invalid repo: %s", repo)
+	}
+	_, err := p.client.Actions.RerunWorkflowByID(ctx, parts[0], parts[1], runID)
+	return err
+}
+
 // FetchRunJobs returns a summary of jobs and their steps for a workflow run.
 func (p *GitHubPoller) FetchRunJobs(ctx context.Context, repo string, runID int64) (string, error) {
 	parts := strings.SplitN(repo, "/", 2)

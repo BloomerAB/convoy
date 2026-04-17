@@ -342,6 +342,41 @@ func (a *App) selectedResource() *model.Resource {
 	return nil
 }
 
+func (a *App) reconcileOrRerun() {
+	r := a.selectedResource()
+	if r == nil {
+		return
+	}
+
+	switch r.Kind {
+	case model.KindWorkflowRun:
+		if a.ghPoller == nil {
+			return
+		}
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			err := a.ghPoller.RerunWorkflow(ctx, r.Repo, r.RunID)
+			if err != nil {
+				log.Printf("rerun workflow: %v", err)
+			} else {
+				log.Printf("rerun triggered: %s/%s", r.Repo, r.Name)
+			}
+		}()
+	case model.KindKustomization, model.KindHelmRelease, model.KindGitRepository, model.KindHelmRepository:
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			err := a.factory.Reconcile(ctx, *r)
+			if err != nil {
+				log.Printf("reconcile: %v", err)
+			} else {
+				log.Printf("reconcile triggered: %s/%s on %s", r.Namespace, r.Name, r.Cluster)
+			}
+		}()
+	}
+}
+
 func (a *App) openInBrowser() {
 	if r := a.selectedResource(); r != nil && r.URL != "" {
 		_ = exec.Command("open", r.URL).Start()
@@ -427,6 +462,9 @@ func (a *App) handleInput(event *tcell.EventKey) *tcell.EventKey {
 			a.Stop()
 			return nil
 		case 'r':
+			a.reconcileOrRerun()
+			return nil
+		case 'R':
 			a.redrawDirect()
 			return nil
 		case 'm':
