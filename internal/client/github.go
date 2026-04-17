@@ -89,7 +89,10 @@ func (p *GitHubPoller) poll(ctx context.Context) {
 		return
 	}
 
-	// Fetch runs incrementally — publish after each repo so data appears fast
+	p.mu.RLock()
+	hasData := len(p.runs) > 0
+	p.mu.RUnlock()
+
 	var all []model.Resource
 	for _, repo := range repos {
 		if ctx.Err() != nil {
@@ -102,13 +105,22 @@ func (p *GitHubPoller) poll(ctx context.Context) {
 		}
 		all = append(all, runs...)
 
-		// Publish partial results so UI sees data as it arrives
-		p.mu.Lock()
-		snapshot := make([]model.Resource, len(all))
-		copy(snapshot, all)
-		p.runs = snapshot
-		p.mu.Unlock()
+		// On first load (no existing data), publish incrementally so
+		// data appears fast. On subsequent polls, build full list first
+		// then swap atomically to avoid rows disappearing.
+		if !hasData {
+			p.mu.Lock()
+			snapshot := make([]model.Resource, len(all))
+			copy(snapshot, all)
+			p.runs = snapshot
+			p.mu.Unlock()
+		}
 	}
+
+	// Atomic swap of full result
+	p.mu.Lock()
+	p.runs = all
+	p.mu.Unlock()
 }
 
 func (p *GitHubPoller) discoverRepos(ctx context.Context) ([]string, error) {
