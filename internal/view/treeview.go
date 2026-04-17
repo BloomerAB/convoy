@@ -32,11 +32,6 @@ func resKey(r model.Resource) string {
 	return string(r.Kind) + "/" + r.Namespace + "/" + r.Name
 }
 
-// ksKey returns the Kustomization key format: "namespace/name"
-func ksKey(r model.Resource) string {
-	return r.Namespace + "/" + r.Name
-}
-
 func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 	var clusterRes []model.Resource
 	for _, r := range resources {
@@ -45,9 +40,8 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 		}
 	}
 
-	// Separate by type
-	var sources []model.Resource   // GitRepo, HelmRepo
-	var workloads []model.Resource // Kustomization, HelmRelease
+	var sources []model.Resource
+	var workloads []model.Resource
 	for _, r := range clusterRes {
 		if r.Kind == model.KindGitRepository || r.Kind == model.KindHelmRepository {
 			sources = append(sources, r)
@@ -56,7 +50,45 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 		}
 	}
 
-	// Lookup for dependsOn resolution (by name, cross-namespace)
+	// Build parent→children map
+	childrenOf := make(map[string][]model.Resource)
+	hasParent := make(map[string]bool)
+
+	managedByToKey := func(managedBy string) string {
+		return string(model.KindKustomization) + "/" + managedBy
+	}
+
+	// Pass 1: Kustomizations → under their sourceRef GitRepo (primary ownership)
+	for _, r := range workloads {
+		rk := resKey(r)
+		if r.Kind == model.KindKustomization && r.SourceRef != "" {
+			childrenOf["source:"+r.SourceRef] = append(childrenOf["source:"+r.SourceRef], r)
+			hasParent[rk] = true
+		}
+	}
+
+	// Pass 2: ManagedBy label — HelmRepos and HelmReleases under their Kustomization
+	for _, r := range sources {
+		rk := resKey(r)
+		if !hasParent[rk] && r.ManagedBy != "" {
+			pk := managedByToKey(r.ManagedBy)
+			childrenOf[pk] = append(childrenOf[pk], r)
+			hasParent[rk] = true
+		}
+	}
+	for _, r := range workloads {
+		rk := resKey(r)
+		if !hasParent[rk] && r.ManagedBy != "" {
+			pk := managedByToKey(r.ManagedBy)
+			if pk == rk {
+				continue
+			}
+			childrenOf[pk] = append(childrenOf[pk], r)
+			hasParent[rk] = true
+		}
+	}
+
+	// Pass 3: HelmReleases with dependsOn but no ManagedBy → under their dep
 	byName := make(map[string][]model.Resource)
 	for _, r := range workloads {
 		byName[r.Name] = append(byName[r.Name], r)
@@ -70,7 +102,6 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 		if matches := byName[name]; len(matches) == 1 {
 			return resKey(matches[0])
 		}
-		// Try same namespace
 		for _, m := range byName[name] {
 			if m.Namespace == fromNs {
 				return resKey(m)
@@ -79,54 +110,26 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 		return ""
 	}
 
-	// Build parent→children map using full resKey
-	childrenOf := make(map[string][]model.Resource)
-	hasParent := make(map[string]bool)
-
-	// Pass 1: dependsOn (explicit Flux dependency — highest priority)
 	for _, r := range workloads {
-		for _, dep := range r.DependsOn {
-			parentKey := resolveDep(dep, r.Namespace)
-			if parentKey != "" {
-				childrenOf[parentKey] = append(childrenOf[parentKey], r)
-				hasParent[resKey(r)] = true
+		rk := resKey(r)
+		if !hasParent[rk] && len(r.DependsOn) > 0 {
+			// Place under first resolvable dep
+			for _, dep := range r.DependsOn {
+				pk := resolveDep(dep, r.Namespace)
+				if pk != "" {
+					childrenOf[pk] = append(childrenOf[pk], r)
+					hasParent[rk] = true
+					break
+				}
 			}
 		}
 	}
 
-	// Pass 2: Kustomizations with no dependsOn parent → under their sourceRef GitRepo
+	// Build dependsOn labels for display
+	depsLabel := make(map[string]string)
 	for _, r := range workloads {
-		rk := resKey(r)
-		if !hasParent[rk] && r.Kind == model.KindKustomization && r.SourceRef != "" {
-			childrenOf["source:"+r.SourceRef] = append(childrenOf["source:"+r.SourceRef], r)
-			hasParent[rk] = true
-		}
-	}
-
-	// Pass 3: ManagedBy label — HelmRepos, HelmReleases, and remaining workloads
-	// under their managing Kustomization. Skip self-references.
-	managedByToKey := func(managedBy string) string {
-		return string(model.KindKustomization) + "/" + managedBy
-	}
-
-	for _, r := range sources {
-		rk := resKey(r)
-		if !hasParent[rk] && r.ManagedBy != "" {
-			pk := managedByToKey(r.ManagedBy)
-			childrenOf[pk] = append(childrenOf[pk], r)
-			hasParent[rk] = true
-		}
-	}
-	for _, r := range workloads {
-		rk := resKey(r)
-		if !hasParent[rk] && r.ManagedBy != "" {
-			// Skip self-management (e.g. flux-system ks manages itself)
-			pk := managedByToKey(r.ManagedBy)
-			if pk == rk {
-				continue
-			}
-			childrenOf[pk] = append(childrenOf[pk], r)
-			hasParent[rk] = true
+		if len(r.DependsOn) > 0 {
+			depsLabel[resKey(r)] = strings.Join(r.DependsOn, ", ")
 		}
 	}
 
@@ -136,7 +139,7 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 
 	added := make(map[string]bool)
 
-	// GitRepositories as top-level roots
+	// GitRepositories as top-level
 	var gitRepos []model.Resource
 	for _, r := range sources {
 		if r.Kind == model.KindGitRepository {
@@ -151,22 +154,21 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 		rk := resKey(src)
 		added[rk] = true
 
-		srcNode := makeNode(src)
+		srcNode := makeNode(src, "")
 		root.AddChild(srcNode)
 
-		// Kustomizations linked via sourceRef
 		sourceKey := "source:" + string(src.Kind) + "/" + src.Namespace + "/" + src.Name
-		addSortedChildren(srcNode, childrenOf[sourceKey], childrenOf, added)
+		addSortedChildren(srcNode, childrenOf[sourceKey], childrenOf, added, depsLabel)
 	}
 
-	// Remaining orphans
+	// Orphans
 	allRes := append(sources, workloads...)
 	for _, r := range allRes {
 		rk := resKey(r)
 		if !added[rk] {
 			added[rk] = true
-			node := makeNode(r)
-			addSortedChildren(node, childrenOf[resKey(r)], childrenOf, added)
+			node := makeNode(r, depsLabel[rk])
+			addSortedChildren(node, childrenOf[rk], childrenOf, added, depsLabel)
 			root.AddChild(node)
 		}
 	}
@@ -185,7 +187,7 @@ func (tv *TreeView) Refresh(resources []model.Resource) {
 	tv.SetRoot(fresh.GetRoot())
 }
 
-func addSortedChildren(parentNode *tview.TreeNode, children []model.Resource, childrenOf map[string][]model.Resource, added map[string]bool) {
+func addSortedChildren(parentNode *tview.TreeNode, children []model.Resource, childrenOf map[string][]model.Resource, added map[string]bool, depsLabel map[string]string) {
 	sort.Slice(children, func(i, j int) bool {
 		return children[i].Name < children[j].Name
 	})
@@ -196,17 +198,21 @@ func addSortedChildren(parentNode *tview.TreeNode, children []model.Resource, ch
 			continue
 		}
 		added[rk] = true
-		childNode := makeNode(child)
-		// Recurse: this child's own children
-		addSortedChildren(childNode, childrenOf[rk], childrenOf, added)
+		childNode := makeNode(child, depsLabel[rk])
+		addSortedChildren(childNode, childrenOf[rk], childrenOf, added, depsLabel)
 		parentNode.AddChild(childNode)
 	}
 }
 
-func makeNode(r model.Resource) *tview.TreeNode {
+func makeNode(r model.Resource, deps string) *tview.TreeNode {
 	color := healthColorHex(r.Health)
 	label := fmt.Sprintf("[%s]%s[-] %s [#9696B4](%s)[-]",
 		color, r.Health.Symbol(), r.Name, kindLabel(r.Kind))
+
+	if deps != "" {
+		label += fmt.Sprintf(" [#6EB5FF]→ %s[-]", deps)
+	}
+
 	if r.Health.IsFailed() && r.Message != "" {
 		msg := r.Message
 		if len(msg) > 40 {
