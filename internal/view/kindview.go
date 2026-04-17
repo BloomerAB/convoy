@@ -89,20 +89,18 @@ func (kv *KindView) Refresh(allResources []model.Resource) {
 	kv.Clear()
 
 	headers := render.ResourceHeader()
+	lastCol := len(headers) - 1
 	for col, h := range headers {
-		kv.SetCell(0, col, tview.NewTableCell(h).
+		cell := tview.NewTableCell(h).
 			SetSelectable(false).
 			SetTextColor(ui.ColorHeader).
-			SetAttributes(tcell.AttrBold))
+			SetAttributes(tcell.AttrBold)
+		if col == lastCol {
+			cell.SetText(fmt.Sprintf("%s (%d)", kv.Title(), len(filtered)))
+			cell.SetAlign(tview.AlignRight)
+		}
+		kv.SetCell(0, col, cell)
 	}
-
-	// Title row showing count
-	titleText := fmt.Sprintf(" %s (%d)", kv.Title(), len(filtered))
-	kv.SetCell(0, 0, tview.NewTableCell(titleText).
-		SetSelectable(false).
-		SetTextColor(ui.ColorHeader).
-		SetAttributes(tcell.AttrBold).
-		SetExpansion(0))
 
 	for i, r := range filtered {
 		row := i + 1
