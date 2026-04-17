@@ -434,7 +434,7 @@ func (a *App) showTreeForCluster(cluster string) {
 	all := a.getSnapshot()
 	tv := view.NewFluxTreeView(all, cluster)
 	a.treeView = tv
-	a.pageStack.Switch("tree", tv)
+	a.pageStack.Push("tree", tv)
 }
 
 func (a *App) showClusterPicker() {
