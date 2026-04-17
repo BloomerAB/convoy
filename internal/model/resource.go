@@ -33,6 +33,7 @@ type Resource struct {
 	NextRun        time.Time     // Estimated next reconciliation
 	SourceRef      string        // Flux: "Kind/namespace/name" of source
 	DependsOn      []string      // Flux: "namespace/name" of dependencies
+	ManagedBy      string        // Flux: "namespace/name" of managing Kustomization
 }
 
 // SortKey returns a comparable key for sorting:

@@ -177,6 +177,7 @@ func (w *FluxWatcher) unstructuredToResource(obj unstructured.Unstructured) mode
 	r.NextRun = calculateNextRun(obj, r.Interval)
 	r.SourceRef = extractSourceRef(obj, w.kind)
 	r.DependsOn = extractDependsOn(obj)
+	r.ManagedBy = extractManagedBy(obj)
 
 	return r
 }
@@ -355,6 +356,16 @@ func extractDependsOn(obj unstructured.Unstructured) []string {
 		result = append(result, depNs+"/"+name)
 	}
 	return result
+}
+
+func extractManagedBy(obj unstructured.Unstructured) string {
+	labels := obj.GetLabels()
+	name := labels["kustomize.toolkit.fluxcd.io/name"]
+	ns := labels["kustomize.toolkit.fluxcd.io/namespace"]
+	if name != "" && ns != "" {
+		return ns + "/" + name
+	}
+	return ""
 }
 
 func extractInterval(obj unstructured.Unstructured) time.Duration {
