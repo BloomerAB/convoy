@@ -40,7 +40,8 @@ type App struct {
 	cmdActive    bool
 	cmdMode      string             // ":" or "/"
 	filterText   string             // active / filter (regex)
-	kindFilter   model.ResourceKind // empty = all kinds
+	kindFilter     model.ResourceKind  // empty = all kinds
+	runLogResource *model.Resource     // resource shown in current runlog view
 
 	// snapshot is the latest resource collection, updated by background goroutine.
 	// The UI goroutine only reads this — never touches watcher locks.
@@ -320,11 +321,20 @@ func (a *App) toggleShowAll() {
 }
 
 func (a *App) openInBrowser() {
-	r := a.dashboard.SelectedResource()
-	if r == nil || r.URL == "" {
-		return
+	var url string
+	switch a.pageStack.Current() {
+	case "dashboard":
+		if r := a.dashboard.SelectedResource(); r != nil {
+			url = r.URL
+		}
+	case "runlog":
+		if a.runLogResource != nil {
+			url = a.runLogResource.URL
+		}
 	}
-	_ = exec.Command("open", r.URL).Start()
+	if url != "" {
+		_ = exec.Command("open", url).Start()
+	}
 }
 
 func (a *App) showRunLog() {
@@ -333,6 +343,7 @@ func (a *App) showRunLog() {
 		return
 	}
 
+	a.runLogResource = r
 	lv := view.NewRunLogView(*r)
 	a.pageStack.Push("runlog", lv)
 
@@ -411,11 +422,8 @@ func (a *App) handleInput(event *tcell.EventKey) *tcell.EventKey {
 			}
 			return event
 		case 'o':
-			if a.pageStack.Current() == "dashboard" {
-				a.openInBrowser()
-				return nil
-			}
-			return event
+			a.openInBrowser()
+			return nil
 		case ':':
 			a.showCmdBar(":")
 			return nil

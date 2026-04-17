@@ -12,6 +12,7 @@ import (
 // RunLogView shows the jobs/steps of a GitHub Actions run.
 type RunLogView struct {
 	*tview.TextView
+	Resource model.Resource
 }
 
 func NewRunLogView(r model.Resource) *RunLogView {
@@ -28,7 +29,7 @@ func NewRunLogView(r model.Resource) *RunLogView {
 		SetBorderColor(tcell.ColorCornflowerBlue)
 	tv.SetText("[yellow]Loading jobs...[-]")
 
-	return &RunLogView{TextView: tv}
+	return &RunLogView{TextView: tv, Resource: r}
 }
 
 func (v *RunLogView) SetContent(content string) {
