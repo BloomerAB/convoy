@@ -83,6 +83,21 @@ func Load() (Config, error) {
 	return cfg, nil
 }
 
+// WriteToPath writes a config to the given path with a header comment.
+func WriteToPath(path string, cfg Config) error {
+	data, err := yaml.Marshal(&cfg)
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
+
+	header := []byte("# convoy configuration\n# See: https://github.com/BloomerAB/convoy\n\n")
+	if err := os.WriteFile(path, append(header, data...), 0o644); err != nil {
+		return fmt.Errorf("write config: %w", err)
+	}
+
+	return nil
+}
+
 // EnsureExists creates the config file with defaults if it doesn't exist.
 func EnsureExists() (string, error) {
 	path, err := Path()
@@ -99,15 +114,8 @@ func EnsureExists() (string, error) {
 		return "", fmt.Errorf("create config dir: %w", err)
 	}
 
-	cfg := DefaultConfig()
-	data, err := yaml.Marshal(&cfg)
-	if err != nil {
-		return "", fmt.Errorf("marshal default config: %w", err)
-	}
-
-	header := []byte("# convoy configuration\n# See: https://github.com/BloomerAB/convoy\n\n")
-	if err := os.WriteFile(path, append(header, data...), 0o644); err != nil {
-		return "", fmt.Errorf("write config: %w", err)
+	if err := WriteToPath(path, DefaultConfig()); err != nil {
+		return "", err
 	}
 
 	return path, nil

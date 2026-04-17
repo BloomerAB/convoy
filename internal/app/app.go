@@ -176,22 +176,31 @@ func (a *App) onCommand(text string) {
 }
 
 func (a *App) execConfig() {
-	cv := view.NewConfigView(a.cfg, func() {
-		newCfg, changed, err := editConfig(a.tviewApp)
-		if err != nil {
-			log.Printf("config edit error: %v", err)
-			return
-		}
-		if changed {
-			a.cfg = newCfg
-			a.restartWatchers()
-		}
-		// Re-render the config view with potentially updated config
-		// Pop and re-push to refresh
+	files := view.DiscoverConfigFiles()
+	cl := view.NewConfigListView(files, a.onConfigSelect, a.onConfigEdit)
+	a.pageStack.Push("config", cl)
+}
+
+func (a *App) onConfigSelect(f view.ConfigFile) {
+	detail := view.NewConfigDetailView(f, a.onConfigEdit)
+	a.pageStack.Push("config-detail", detail)
+}
+
+func (a *App) onConfigEdit(f view.ConfigFile) {
+	newCfg, changed, err := editConfigAndReload(a.tviewApp, f.Path)
+	if err != nil {
+		log.Printf("config edit error: %v", err)
+		return
+	}
+	if changed {
+		a.cfg = newCfg
+		a.restartWatchers()
+	}
+	// Refresh detail view if we're on one
+	if a.pageStack.Current() == "config-detail" {
 		a.pageStack.Pop()
-		a.execConfig()
-	})
-	a.pageStack.Push("config", cv)
+		a.onConfigSelect(f)
+	}
 }
 
 func (a *App) restartWatchers() {
