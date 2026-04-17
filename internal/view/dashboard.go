@@ -29,12 +29,21 @@ func NewDashboard(onDescribe func(model.Resource)) *Dashboard {
 	}
 }
 
-// DescribeSelected opens the describe view for the currently selected row.
-func (d *Dashboard) DescribeSelected() {
+// SelectedResource returns the currently selected resource, or nil.
+func (d *Dashboard) SelectedResource() *model.Resource {
 	row, _ := d.GetSelection()
 	idx := row - 1 // header offset
-	if idx >= 0 && idx < len(d.sorted) && d.onDescribe != nil {
-		d.onDescribe(d.sorted[idx])
+	if idx >= 0 && idx < len(d.sorted) {
+		r := d.sorted[idx]
+		return &r
+	}
+	return nil
+}
+
+// DescribeSelected opens the describe view for the currently selected row.
+func (d *Dashboard) DescribeSelected() {
+	if r := d.SelectedResource(); r != nil && d.onDescribe != nil {
+		d.onDescribe(*r)
 	}
 }
 

@@ -182,6 +182,7 @@ func (p *GitHubPoller) fetchRuns(ctx context.Context, fullName string) ([]model.
 				return sha
 			}(),
 			Actor: run.GetActor().GetLogin(),
+			RunID: run.GetID(),
 		}
 		if run.UpdatedAt != nil {
 			r.LastTransition = run.UpdatedAt.Time
@@ -199,6 +200,60 @@ func (p *GitHubPoller) Resources() []model.Resource {
 	result := make([]model.Resource, len(p.runs))
 	copy(result, p.runs)
 	return result
+}
+
+// FetchRunJobs returns a summary of jobs and their steps for a workflow run.
+func (p *GitHubPoller) FetchRunJobs(ctx context.Context, repo string, runID int64) (string, error) {
+	parts := strings.SplitN(repo, "/", 2)
+	if len(parts) != 2 {
+		return "", fmt.Errorf("invalid repo: %s", repo)
+	}
+	owner, repoName := parts[0], parts[1]
+
+	jobs, _, err := p.client.Actions.ListWorkflowJobs(ctx, owner, repoName, runID, &github.ListWorkflowJobsOptions{
+		Filter:      "latest",
+		ListOptions: github.ListOptions{PerPage: 30},
+	})
+	if err != nil {
+		return "", fmt.Errorf("list jobs: %w", err)
+	}
+
+	var b strings.Builder
+	for _, job := range jobs.Jobs {
+		icon := "✓"
+		if job.GetConclusion() == "failure" {
+			icon = "✗"
+		} else if job.GetStatus() != "completed" {
+			icon = "●"
+		} else if job.GetConclusion() == "skipped" {
+			icon = "◌"
+		}
+
+		fmt.Fprintf(&b, "%s %s", icon, job.GetName())
+		if job.GetConclusion() != "" && job.GetConclusion() != "success" {
+			fmt.Fprintf(&b, " (%s)", job.GetConclusion())
+		}
+		b.WriteString("\n")
+
+		for _, step := range job.Steps {
+			stepIcon := "  ✓"
+			if step.GetConclusion() == "failure" {
+				stepIcon = "  ✗"
+			} else if step.GetConclusion() == "skipped" {
+				stepIcon = "  ◌"
+			} else if step.GetStatus() != "completed" {
+				stepIcon = "  ●"
+			}
+			fmt.Fprintf(&b, "%s %s", stepIcon, step.GetName())
+			if step.GetConclusion() == "failure" {
+				b.WriteString(" [FAILED]")
+			}
+			b.WriteString("\n")
+		}
+		b.WriteString("\n")
+	}
+
+	return b.String(), nil
 }
 
 func workflowHealth(status, conclusion string) model.HealthStatus {

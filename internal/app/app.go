@@ -318,6 +318,31 @@ func (a *App) toggleShowAll() {
 	a.updateFooterDirect()
 }
 
+func (a *App) showRunLog() {
+	r := a.dashboard.SelectedResource()
+	if r == nil || r.Kind != model.KindWorkflowRun || a.ghPoller == nil {
+		return
+	}
+
+	lv := view.NewRunLogView(*r)
+	a.pageStack.Push("runlog", lv)
+
+	// Fetch jobs in background, update view when done
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+
+		content, err := a.ghPoller.FetchRunJobs(ctx, r.Repo, r.RunID)
+		a.tviewApp.QueueUpdateDraw(func() {
+			if err != nil {
+				lv.SetError(err)
+			} else {
+				lv.SetContent(content)
+			}
+		})
+	}()
+}
+
 func (a *App) onDescribe(r model.Resource) {
 	dv := view.NewDescribeView(r)
 	a.pageStack.Push("describe", dv)
@@ -367,6 +392,12 @@ func (a *App) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		case 'd':
 			if a.pageStack.Current() == "dashboard" {
 				a.dashboard.DescribeSelected()
+				return nil
+			}
+			return event
+		case 'l':
+			if a.pageStack.Current() == "dashboard" {
+				a.showRunLog()
 				return nil
 			}
 			return event
