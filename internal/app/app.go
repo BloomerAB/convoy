@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sync"
+	"time"
 
 	"github.com/bloomerab/convoy/config"
 	"github.com/bloomerab/convoy/internal/client"
@@ -28,6 +30,10 @@ type App struct {
 	layout     *tview.Flex
 	watchers   []dao.Watcher
 	cancel     context.CancelFunc
+
+	// Debounce: coalesce rapid watcher events into one redraw
+	debounceMu    sync.Mutex
+	debounceTimer *time.Timer
 }
 
 func New(cfg config.Config) *App {
@@ -66,7 +72,7 @@ func (a *App) Init() error {
 
 	a.header = view.NewHeader()
 	a.footer = view.NewFooter()
-	a.dashboard = view.NewDashboard(a.tableModel)
+	a.dashboard = view.NewDashboard(a.tableModel, a.onDescribe)
 	a.pageStack = NewPageStack()
 	a.pageStack.Push("dashboard", a.dashboard)
 	a.cmdInput = view.NewCmdBar(a.onCommand, a.onCmdCancel)
@@ -85,18 +91,7 @@ func (a *App) Init() error {
 func (a *App) Run() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	a.cancel = cancel
-
-	// Create watchers for each cluster
-	for _, cc := range a.factory.Clients() {
-		w := dao.NewKustomizationDAO(cc, a.onWatchUpdate)
-		a.watchers = append(a.watchers, w)
-		go func(w dao.Watcher) {
-			if err := w.Start(ctx); err != nil && ctx.Err() == nil {
-				log.Printf("watcher error: %v", err)
-			}
-		}(w)
-	}
-
+	a.startWatchers(ctx)
 	return a.tviewApp.Run()
 }
 
@@ -107,7 +102,36 @@ func (a *App) Stop() {
 	a.tviewApp.Stop()
 }
 
-func (a *App) onWatchUpdate() {
+func (a *App) startWatchers(ctx context.Context) {
+	for _, cc := range a.factory.Clients() {
+		watchers := []dao.Watcher{
+			dao.NewKustomizationDAO(cc, a.scheduleRedraw),
+			dao.NewHelmReleaseDAO(cc, a.scheduleRedraw),
+			dao.NewGitRepositoryDAO(cc, a.scheduleRedraw),
+		}
+		for _, w := range watchers {
+			a.watchers = append(a.watchers, w)
+			go func(w dao.Watcher) {
+				if err := w.Start(ctx); err != nil && ctx.Err() == nil {
+					log.Printf("watcher error: %v", err)
+				}
+			}(w)
+		}
+	}
+}
+
+// scheduleRedraw debounces watcher events — redraws at most every 500ms.
+func (a *App) scheduleRedraw() {
+	a.debounceMu.Lock()
+	defer a.debounceMu.Unlock()
+
+	if a.debounceTimer != nil {
+		a.debounceTimer.Stop()
+	}
+	a.debounceTimer = time.AfterFunc(500*time.Millisecond, a.doRedraw)
+}
+
+func (a *App) doRedraw() {
 	var all []model.Resource
 	for _, w := range a.watchers {
 		all = append(all, w.Resources()...)
@@ -117,6 +141,11 @@ func (a *App) onWatchUpdate() {
 		a.tableModel.SetResources(all)
 		a.header.Update(all, len(a.factory.Clients()))
 	})
+}
+
+func (a *App) onDescribe(r model.Resource) {
+	dv := view.NewDescribeView(r)
+	a.pageStack.Push("describe", dv)
 }
 
 func (a *App) handleInput(event *tcell.EventKey) *tcell.EventKey {
@@ -133,7 +162,7 @@ func (a *App) handleInput(event *tcell.EventKey) *tcell.EventKey {
 			a.Stop()
 			return nil
 		case 'r':
-			a.onWatchUpdate()
+			a.doRedraw()
 			return nil
 		case ':':
 			a.showCmdBar(":")
@@ -196,7 +225,6 @@ func (a *App) onConfigEdit(f view.ConfigFile) {
 		a.cfg = newCfg
 		a.restartWatchers()
 	}
-	// Refresh detail view if we're on one
 	if a.pageStack.Current() == "config-detail" {
 		a.pageStack.Pop()
 		a.onConfigSelect(f)
@@ -204,12 +232,10 @@ func (a *App) onConfigEdit(f view.ConfigFile) {
 }
 
 func (a *App) restartWatchers() {
-	// Cancel existing watchers
 	if a.cancel != nil {
 		a.cancel()
 	}
 
-	// Reset state
 	a.factory = client.NewClusterFactory()
 	a.watchers = nil
 
@@ -231,14 +257,5 @@ func (a *App) restartWatchers() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	a.cancel = cancel
-
-	for _, cc := range a.factory.Clients() {
-		w := dao.NewKustomizationDAO(cc, a.onWatchUpdate)
-		a.watchers = append(a.watchers, w)
-		go func(w dao.Watcher) {
-			if err := w.Start(ctx); err != nil && ctx.Err() == nil {
-				log.Printf("watcher error: %v", err)
-			}
-		}(w)
-	}
+	a.startWatchers(ctx)
 }

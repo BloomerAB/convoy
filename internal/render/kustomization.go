@@ -7,13 +7,13 @@ import (
 	"github.com/bloomerab/convoy/internal/model"
 )
 
-// Header returns the column headers for Kustomization rows.
-func KustomizationHeader() []string {
-	return []string{"", "CLUSTER", "NAME", "STATUS", "MESSAGE", "REVISION", "AGE"}
+// ResourceHeader returns the column headers for the dashboard table.
+func ResourceHeader() []string {
+	return []string{"", "CLUSTER", "KIND", "NAME", "STATUS", "MESSAGE", "REVISION", "AGE"}
 }
 
-// KustomizationRow renders a Kustomization resource to table cells.
-func KustomizationRow(r model.Resource) []string {
+// ResourceRow renders any resource to table cells.
+func ResourceRow(r model.Resource) []string {
 	rev := r.Revision
 	if len(rev) > 12 {
 		rev = rev[:12]
@@ -27,11 +27,27 @@ func KustomizationRow(r model.Resource) []string {
 	return []string{
 		r.Health.Symbol(),
 		r.Cluster,
+		kindShort(r.Kind),
 		r.Name,
 		r.Health.String(),
 		msg,
 		rev,
 		formatAge(r.LastTransition),
+	}
+}
+
+func kindShort(k model.ResourceKind) string {
+	switch k {
+	case model.KindKustomization:
+		return "Kustomization"
+	case model.KindHelmRelease:
+		return "HelmRelease"
+	case model.KindGitRepository:
+		return "GitRepo"
+	case model.KindWorkflowRun:
+		return "Workflow"
+	default:
+		return string(k)
 	}
 }
 
