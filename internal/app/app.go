@@ -35,6 +35,7 @@ type App struct {
 	watchers     []dao.Watcher
 	cancel       context.CancelFunc
 	showMineOnly bool
+	showAll      bool               // false = only failed/progressing (default)
 	cmdActive    bool
 	cmdMode      string             // ":" or "/"
 	filterText   string             // active / filter (regex)
@@ -224,8 +225,8 @@ func (a *App) redrawDirect() {
 }
 
 func (a *App) applyUpdate(resources []model.Resource) {
-	a.dashboard.Refresh(resources)
-	a.header.Update(resources, len(a.factory.Clients()), a.showMineOnly)
+	a.dashboard.Refresh(resources, a.showAll)
+	a.header.Update(resources, len(a.factory.Clients()), a.showMineOnly, a.showAll)
 }
 
 func (a *App) filterResources(resources []model.Resource) []model.Resource {
@@ -311,6 +312,12 @@ func (a *App) toggleMine() {
 	a.updateFooterDirect()
 }
 
+func (a *App) toggleShowAll() {
+	a.showAll = !a.showAll
+	a.redrawDirect()
+	a.updateFooterDirect()
+}
+
 func (a *App) onDescribe(r model.Resource) {
 	dv := view.NewDescribeView(r)
 	a.pageStack.Push("describe", dv)
@@ -353,6 +360,9 @@ func (a *App) handleInput(event *tcell.EventKey) *tcell.EventKey {
 			return nil
 		case 'm':
 			a.toggleMine()
+			return nil
+		case 'a':
+			a.toggleShowAll()
 			return nil
 		case 'd':
 			if a.pageStack.Current() == "dashboard" {
@@ -452,7 +462,7 @@ func (a *App) clearKindFilter() {
 }
 
 func (a *App) updateFooterDirect() {
-	a.footer.Update(a.filterText, a.showMineOnly, string(a.kindFilter))
+	a.footer.Update(a.filterText, a.showMineOnly, a.showAll, string(a.kindFilter))
 }
 
 func (a *App) execConfig() {

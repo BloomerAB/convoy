@@ -20,15 +20,16 @@ func NewHeader() *Header {
 	return &Header{TextView: tv}
 }
 
-func (h *Header) Update(resources []model.Resource, clusterCount int, mineOnly bool) {
+func (h *Header) Update(resources []model.Resource, clusterCount int, mineOnly bool, showAll bool) {
 	failures := 0
-	ghaCount := 0
+	progressing := 0
+	total := len(resources)
 	for _, r := range resources {
 		if r.Health.IsFailed() {
 			failures++
 		}
-		if r.Kind == model.KindWorkflowRun {
-			ghaCount++
+		if r.Health == model.HealthProgressing {
+			progressing++
 		}
 	}
 
@@ -37,16 +38,21 @@ func (h *Header) Update(resources []model.Resource, clusterCount int, mineOnly b
 		failText = fmt.Sprintf("  [red]%d failing[-]", failures)
 	}
 
+	var progText string
+	if progressing > 0 {
+		progText = fmt.Sprintf("  [yellow]%d progressing[-]", progressing)
+	}
+
 	mineText := ""
 	if mineOnly {
 		mineText = "  [yellow][mine][-]"
 	}
 
-	ghaText := ""
-	if ghaCount > 0 {
-		ghaText = fmt.Sprintf("  %d GHA runs", ghaCount)
+	viewMode := "[darkcyan]active[-]"
+	if showAll {
+		viewMode = fmt.Sprintf("[darkcyan]all %d[-]", total)
 	}
 
-	h.SetText(fmt.Sprintf("[white::b]convoy[-]  %d clusters%s%s%s",
-		clusterCount, ghaText, failText, mineText))
+	h.SetText(fmt.Sprintf("[white::b]convoy[-]  %d clusters  %s%s%s%s",
+		clusterCount, viewMode, failText, progText, mineText))
 }

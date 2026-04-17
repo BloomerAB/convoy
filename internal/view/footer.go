@@ -16,18 +16,23 @@ func NewFooter() *Footer {
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignLeft)
 	tv.SetBorderPadding(0, 0, 1, 1)
-	tv.SetText(footerText("", false, ""))
+	tv.SetText(footerText("", false, false, ""))
 	return &Footer{TextView: tv}
 }
 
-func (f *Footer) Update(filter string, mineOnly bool, kindFilter string) {
-	f.SetText(footerText(filter, mineOnly, kindFilter))
+func (f *Footer) Update(filter string, mineOnly bool, showAll bool, kindFilter string) {
+	f.SetText(footerText(filter, mineOnly, showAll, kindFilter))
 }
 
-func footerText(filter string, mineOnly bool, kindFilter string) string {
+func footerText(filter string, mineOnly bool, showAll bool, kindFilter string) string {
 	mineHint := "m:mine"
 	if mineOnly {
 		mineHint = "m:all"
+	}
+
+	allHint := "a:all"
+	if showAll {
+		allHint = "a:active"
 	}
 
 	indicators := ""
@@ -41,5 +46,5 @@ func footerText(filter string, mineOnly bool, kindFilter string) string {
 		indicators += " (Esc clear)"
 	}
 
-	return fmt.Sprintf("[darkcyan]:cmd  /filter  d:describe  %s  r:refresh  q:quit[-]%s", mineHint, indicators)
+	return fmt.Sprintf("[darkcyan]:cmd  /filter  d:describe  %s  %s  r:refresh  q:quit[-]%s", allHint, mineHint, indicators)
 }
