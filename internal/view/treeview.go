@@ -36,36 +36,65 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 		}
 	}
 
-	// Build lookup: "namespace/name" → resource (for all non-source kinds)
-	// and "Kind/namespace/name" → resource (for sourceRef matching)
+	// Separate sources from workloads
+	var sources []model.Resource
+	var workloads []model.Resource // Kustomizations + HelmReleases
+	for _, r := range clusterRes {
+		if r.Kind == model.KindGitRepository || r.Kind == model.KindHelmRepository {
+			sources = append(sources, r)
+		} else {
+			workloads = append(workloads, r)
+		}
+	}
+
+	// Build name→resource lookup for dependsOn matching
+	// dependsOn uses name (possibly cross-namespace), so match by name first,
+	// then by namespace/name for disambiguation
 	byNsName := make(map[string]model.Resource)
-	byFullRef := make(map[string]model.Resource)
-	for _, r := range clusterRes {
+	byName := make(map[string][]model.Resource)
+	for _, r := range workloads {
 		byNsName[r.Namespace+"/"+r.Name] = r
-		byFullRef[string(r.Kind)+"/"+r.Namespace+"/"+r.Name] = r
+		byName[r.Name] = append(byName[r.Name], r)
 	}
 
-	// Build parent→children map based on dependsOn (cross-kind)
-	// A resource is a child of each thing it dependsOn
-	childrenOf := make(map[string][]model.Resource) // parent key → children
-	hasParent := make(map[string]bool)               // child key → true if it has a dependsOn parent
-
-	for _, r := range clusterRes {
-		if r.Kind == model.KindGitRepository || r.Kind == model.KindHelmRepository {
-			continue
+	// Resolve a dependsOn entry to a resource key (namespace/name)
+	resolveDep := func(dep string, fromNs string) string {
+		// Try exact namespace/name match first
+		if _, ok := byNsName[dep]; ok {
+			return dep
 		}
+		// dep might be just a name — try same namespace
+		if _, ok := byNsName[fromNs+"/"+dep]; ok {
+			return fromNs + "/" + dep
+		}
+		// Try by name across all namespaces
+		name := dep
+		if idx := strings.Index(dep, "/"); idx >= 0 {
+			name = dep[idx+1:]
+		}
+		if matches := byName[name]; len(matches) == 1 {
+			return matches[0].Namespace + "/" + matches[0].Name
+		}
+		return ""
+	}
+
+	// Build dependency graph: parent key → child resources
+	childrenOf := make(map[string][]model.Resource)
+	hasParent := make(map[string]bool)
+
+	for _, r := range workloads {
 		for _, dep := range r.DependsOn {
-			childrenOf[dep] = append(childrenOf[dep], r)
-			hasParent[r.Namespace+"/"+r.Name] = true
+			parentKey := resolveDep(dep, r.Namespace)
+			if parentKey != "" {
+				childrenOf[parentKey] = append(childrenOf[parentKey], r)
+				hasParent[r.Namespace+"/"+r.Name] = true
+			}
 		}
 	}
 
-	// Resources that reference a source but have no dependsOn → children of that source
-	sourceChildren := make(map[string][]model.Resource) // sourceRef → children
-	for _, r := range clusterRes {
-		if r.Kind == model.KindGitRepository || r.Kind == model.KindHelmRepository {
-			continue
-		}
+	// Workloads with no dependsOn → group under their source
+	sourceChildren := make(map[string][]model.Resource)
+	for _, r := range workloads {
 		key := r.Namespace + "/" + r.Name
 		if !hasParent[key] && r.SourceRef != "" {
 			sourceChildren[r.SourceRef] = append(sourceChildren[r.SourceRef], r)
@@ -77,13 +106,6 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 	root := tview.NewTreeNode(fmt.Sprintf("[#FFFFFF::b]%s[-::-]", cluster)).
 		SetSelectable(false)
 
-	// Collect sources
-	var sources []model.Resource
-	for _, r := range clusterRes {
-		if r.Kind == model.KindGitRepository || r.Kind == model.KindHelmRepository {
-			sources = append(sources, r)
-		}
-	}
 	sort.Slice(sources, func(i, j int) bool {
 		return sources[i].Name < sources[j].Name
 	})
@@ -92,19 +114,12 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 
 	for _, src := range sources {
 		srcRef := string(src.Kind) + "/" + src.Namespace + "/" + src.Name
-
-		// Get root-level children of this source (no dependsOn)
 		rootChildren := sourceChildren[srcRef]
-		if len(rootChildren) == 0 {
-			// Source with no direct children — still show it but collapsed
-			srcNode := makeNode(src)
-			srcNode.SetExpanded(false)
-			root.AddChild(srcNode)
-			added[src.Namespace+"/"+src.Name] = true
-			continue
-		}
 
 		srcNode := makeNode(src)
+		if len(rootChildren) == 0 {
+			srcNode.SetExpanded(false)
+		}
 		root.AddChild(srcNode)
 		added[src.Namespace+"/"+src.Name] = true
 
@@ -124,11 +139,8 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 		}
 	}
 
-	// Orphans: resources not yet added (no source, no parent)
-	for _, r := range clusterRes {
-		if r.Kind == model.KindGitRepository || r.Kind == model.KindHelmRepository {
-			continue
-		}
+	// Orphans
+	for _, r := range workloads {
 		key := r.Namespace + "/" + r.Name
 		if !added[key] {
 			added[key] = true
@@ -148,7 +160,6 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 	return &TreeView{TreeView: tree}
 }
 
-// buildSubTree recursively adds dependents of a resource as children.
 func buildSubTree(parentNode *tview.TreeNode, parent model.Resource, childrenOf map[string][]model.Resource, added map[string]bool) {
 	parentKey := parent.Namespace + "/" + parent.Name
 	deps := childrenOf[parentKey]
@@ -197,7 +208,7 @@ func kindLabel(k model.ResourceKind) string {
 	case model.KindGitRepository:
 		return "git"
 	case model.KindHelmRepository:
-		return "helm"
+		return "helmrepo"
 	default:
 		return strings.ToLower(string(k))
 	}
