@@ -10,6 +10,8 @@ const helpText = `[#6EB5FF::b]Keys[-::-]
   [#FFFFFF]a[-]          Toggle show all / active only
   [#FFFFFF]m[-]          Toggle mine / all (GitHub Actions)
   [#FFFFFF]r[-]          Reconcile (Flux) / Rerun (GitHub Actions)
+  [#FFFFFF]s[-]          Suspend (Flux)
+  [#FFFFFF]u[-]          Resume (Flux)
   [#FFFFFF]d[-]          Describe selected resource
   [#FFFFFF]l[-]          View GitHub Actions run jobs/steps
   [#FFFFFF]o[-]          Open in browser

@@ -387,6 +387,46 @@ func (a *App) reconcileOrRerun() {
 	}
 }
 
+func (a *App) suspendResource() {
+	r := a.selectedResource()
+	if r == nil || r.Kind == model.KindWorkflowRun {
+		return
+	}
+	a.header.Flash("◌ suspending " + r.Name)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		err := a.factory.Suspend(ctx, *r)
+		if err != nil {
+			log.Printf("suspend: %v", err)
+			a.header.Flash("✗ suspend failed: " + err.Error())
+		} else {
+			log.Printf("suspended: %s/%s on %s", r.Namespace, r.Name, r.Cluster)
+			a.header.Flash("◌ suspended: " + r.Name)
+		}
+	}()
+}
+
+func (a *App) resumeResource() {
+	r := a.selectedResource()
+	if r == nil || r.Kind == model.KindWorkflowRun {
+		return
+	}
+	a.header.Flash("▶ resuming " + r.Name)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		err := a.factory.Resume(ctx, *r)
+		if err != nil {
+			log.Printf("resume: %v", err)
+			a.header.Flash("✗ resume failed: " + err.Error())
+		} else {
+			log.Printf("resumed: %s/%s on %s", r.Namespace, r.Name, r.Cluster)
+			a.header.Flash("✓ resumed: " + r.Name)
+		}
+	}()
+}
+
 func (a *App) openInBrowser() {
 	if r := a.selectedResource(); r != nil && r.URL != "" {
 		_ = exec.Command("open", r.URL).Start()
@@ -525,6 +565,12 @@ func (a *App) handleInput(event *tcell.EventKey) *tcell.EventKey {
 			return nil
 		case 'a':
 			a.toggleShowAll()
+			return nil
+		case 's':
+			a.suspendResource()
+			return nil
+		case 'u':
+			a.resumeResource()
 			return nil
 		case 'd':
 			if r := a.selectedResource(); r != nil {
