@@ -22,6 +22,13 @@ import (
 
 const refreshInterval = 2 * time.Second
 
+func drawHLine(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
+	for i := x; i < x+width; i++ {
+		screen.SetContent(i, y, '─', nil, tcell.StyleDefault.Foreground(tcell.ColorDimGray))
+	}
+	return x, y, width, height
+}
+
 // App is the main application.
 type App struct {
 	tviewApp     *tview.Application
@@ -103,9 +110,14 @@ func (a *App) Init() error {
 	a.pageStack.Push("dashboard", a.dashboard)
 	a.cmdInput = view.NewCmdBar(a.onCommand, a.onCmdCancel)
 
+	headerSep := tview.NewBox().SetBorder(false).SetDrawFunc(drawHLine)
+	footerSep := tview.NewBox().SetBorder(false).SetDrawFunc(drawHLine)
+
 	a.layout = tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(a.header, 1, 0, false).
+		AddItem(headerSep, 1, 0, false).
 		AddItem(a.pageStack, 0, 1, true).
+		AddItem(footerSep, 1, 0, false).
 		AddItem(a.footer, 1, 0, false)
 
 	a.tviewApp.SetRoot(a.layout, true)
