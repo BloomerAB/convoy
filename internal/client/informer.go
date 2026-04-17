@@ -156,8 +156,15 @@ func (w *FluxWatcher) unstructuredToResource(obj unstructured.Unstructured) mode
 		}
 	}
 
-	// If still unknown, infer from artifact presence
+	// If still unknown, infer from context
 	if r.Health == model.HealthUnknown {
+		// OCI HelmRepositories have no conditions/artifacts — they're just pointers
+		specType, _, _ := unstructured.NestedString(obj.Object, "spec", "type")
+		if specType == "oci" {
+			r.Health = model.HealthReady
+		}
+
+		// Has artifact = successfully fetched
 		_, hasArtifact, _ := unstructured.NestedMap(obj.Object, "status", "artifact")
 		if hasArtifact {
 			r.Health = model.HealthReady
