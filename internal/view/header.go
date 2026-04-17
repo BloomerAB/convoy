@@ -2,6 +2,7 @@ package view
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/bloomerab/convoy/internal/model"
 	"github.com/rivo/tview"
@@ -10,6 +11,8 @@ import (
 // Header shows cluster count and failure summary.
 type Header struct {
 	*tview.TextView
+	mu    sync.Mutex
+	flash string
 }
 
 func NewHeader() *Header {
@@ -18,6 +21,13 @@ func NewHeader() *Header {
 		SetTextAlign(tview.AlignLeft)
 	tv.SetBorderPadding(0, 0, 1, 1)
 	return &Header{TextView: tv}
+}
+
+// Flash shows a brief message in the header. Cleared on next Update cycle.
+func (h *Header) Flash(msg string) {
+	h.mu.Lock()
+	h.flash = msg
+	h.mu.Unlock()
 }
 
 func (h *Header) Update(resources []model.Resource, clusterCount int, mineOnly bool, showAll bool) {
@@ -40,7 +50,7 @@ func (h *Header) Update(resources []model.Resource, clusterCount int, mineOnly b
 
 	var progText string
 	if progressing > 0 {
-		progText = fmt.Sprintf("  [#FFFF64]%d progressing[-]", progressing)
+		progText = fmt.Sprintf("  [#FFFF64]%d syncing[-]", progressing)
 	}
 
 	mineText := ""
@@ -53,6 +63,17 @@ func (h *Header) Update(resources []model.Resource, clusterCount int, mineOnly b
 		viewMode = fmt.Sprintf("[#6EB5FF]all %d[-]", total)
 	}
 
-	h.SetText(fmt.Sprintf("[#FFFFFF::b]convoy[-]  %d clusters  %s%s%s%s",
-		clusterCount, viewMode, failText, progText, mineText))
+	// Show flash message if set, then clear it
+	h.mu.Lock()
+	flash := h.flash
+	h.flash = ""
+	h.mu.Unlock()
+
+	flashText := ""
+	if flash != "" {
+		flashText = fmt.Sprintf("  [#64FF64]%s[-]", flash)
+	}
+
+	h.SetText(fmt.Sprintf("[#FFFFFF::b]convoy[-]  %d clusters  %s%s%s%s%s",
+		clusterCount, viewMode, failText, progText, mineText, flashText))
 }

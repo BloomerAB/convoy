@@ -353,25 +353,31 @@ func (a *App) reconcileOrRerun() {
 		if a.ghPoller == nil {
 			return
 		}
+		a.header.Flash("⟳ rerunning " + r.Name)
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			err := a.ghPoller.RerunWorkflow(ctx, r.Repo, r.RunID, r.Health.IsFailed())
 			if err != nil {
 				log.Printf("rerun workflow: %v", err)
+				a.header.Flash("✗ rerun failed: " + err.Error())
 			} else {
 				log.Printf("rerun triggered: %s/%s", r.Repo, r.Name)
+				a.header.Flash("✓ rerun triggered: " + r.Name)
 			}
 		}()
 	case model.KindKustomization, model.KindHelmRelease, model.KindGitRepository, model.KindHelmRepository:
+		a.header.Flash("⟳ reconciling " + r.Name)
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			err := a.factory.Reconcile(ctx, *r)
 			if err != nil {
 				log.Printf("reconcile: %v", err)
+				a.header.Flash("✗ reconcile failed: " + err.Error())
 			} else {
 				log.Printf("reconcile triggered: %s/%s on %s", r.Namespace, r.Name, r.Cluster)
+				a.header.Flash("✓ reconciled: " + r.Name)
 			}
 		}()
 	}
