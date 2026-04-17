@@ -8,26 +8,53 @@ import (
 	"github.com/bloomerab/convoy/internal/model"
 )
 
-// ResourceHeader returns the column headers for the dashboard table.
-func ResourceHeader() []string {
+// FluxHeader returns columns for Flux resources.
+func FluxHeader() []string {
 	return []string{"", "NAME", "KIND", "CLUSTER", "STATUS", "MESSAGE", "REVISION", "AGE"}
 }
 
-// ResourceRow renders any resource to table cells.
-func ResourceRow(r model.Resource) []string {
-	rev := r.Revision
-	if len(rev) > 12 {
-		rev = rev[:12]
+// FluxRow renders a Flux resource to table cells.
+func FluxRow(r model.Resource) []string {
+	return []string{
+		r.Health.Symbol(),
+		r.Name,
+		kindShort(r.Kind),
+		r.Cluster,
+		r.Health.String(),
+		truncate(r.Message, 60),
+		truncate(r.Revision, 12),
+		formatAge(r.LastTransition),
+	}
+}
+
+// GHAHeader returns columns for GitHub Actions runs.
+func GHAHeader() []string {
+	return []string{"", "REPO", "WORKFLOW", "BRANCH", "STATUS", "ACTOR", "REVISION", "AGE"}
+}
+
+// GHARow renders a workflow run to table cells.
+func GHARow(r model.Resource) []string {
+	repo := r.Repo
+	if idx := strings.LastIndex(repo, "/"); idx >= 0 {
+		repo = repo[idx+1:]
 	}
 
-	msg := r.Message
-	if len(msg) > 60 {
-		msg = msg[:57] + "..."
+	return []string{
+		r.Health.Symbol(),
+		repo,
+		r.Name,
+		r.Branch,
+		r.Health.String(),
+		r.Actor,
+		truncate(r.Revision, 7),
+		formatAge(r.LastTransition),
 	}
+}
 
+// FailureRow renders a failed resource as a compact one-liner.
+func FailureRow(r model.Resource) []string {
 	name := r.Name
 	if r.Kind == model.KindWorkflowRun {
-		// Show repo/workflow for GHA runs
 		repo := r.Repo
 		if idx := strings.LastIndex(repo, "/"); idx >= 0 {
 			repo = repo[idx+1:]
@@ -35,21 +62,24 @@ func ResourceRow(r model.Resource) []string {
 		name = repo + "/" + r.Name
 	}
 
-	cluster := r.Cluster
+	source := r.Cluster
 	if r.Kind == model.KindWorkflowRun {
-		cluster = r.Branch
+		source = r.Branch
 	}
 
 	return []string{
 		r.Health.Symbol(),
 		name,
 		kindShort(r.Kind),
-		cluster,
-		r.Health.String(),
-		msg,
-		rev,
+		source,
+		truncate(r.Message, 50),
 		formatAge(r.LastTransition),
 	}
+}
+
+// FailureHeader returns columns for the failures section.
+func FailureHeader() []string {
+	return []string{"", "NAME", "KIND", "SOURCE", "MESSAGE", "AGE"}
 }
 
 func kindShort(k model.ResourceKind) string {
@@ -65,6 +95,13 @@ func kindShort(k model.ResourceKind) string {
 	default:
 		return string(k)
 	}
+}
+
+func truncate(s string, max int) string {
+	if len(s) > max {
+		return s[:max-3] + "..."
+	}
+	return s
 }
 
 func formatAge(t time.Time) string {
