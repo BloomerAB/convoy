@@ -13,12 +13,11 @@ import (
 // Dashboard is the main view showing all clusters.
 type Dashboard struct {
 	*tview.Table
-	tableModel *model.TableModel
 	onDescribe func(model.Resource)
 	sorted     []model.Resource
 }
 
-func NewDashboard(tm *model.TableModel, onDescribe func(model.Resource)) *Dashboard {
+func NewDashboard(onDescribe func(model.Resource)) *Dashboard {
 	table := tview.NewTable().
 		SetSelectable(true, false).
 		SetFixed(1, 0).
@@ -26,7 +25,6 @@ func NewDashboard(tm *model.TableModel, onDescribe func(model.Resource)) *Dashbo
 
 	d := &Dashboard{
 		Table:      table,
-		tableModel: tm,
 		onDescribe: onDescribe,
 	}
 
@@ -38,13 +36,7 @@ func NewDashboard(tm *model.TableModel, onDescribe func(model.Resource)) *Dashbo
 		return event
 	})
 
-	tm.AddListener(d)
 	return d
-}
-
-// OnDataChanged implements model.TableListener.
-func (d *Dashboard) OnDataChanged() {
-	d.refresh()
 }
 
 func (d *Dashboard) describeSelected() {
@@ -55,9 +47,8 @@ func (d *Dashboard) describeSelected() {
 	}
 }
 
-func (d *Dashboard) refresh() {
-	resources := d.tableModel.Resources()
-
+// Refresh rebuilds the table with the given resources. Must be called on the UI goroutine.
+func (d *Dashboard) Refresh(resources []model.Resource) {
 	sort.Slice(resources, func(i, j int) bool {
 		hi, ti := resources[i].SortKey()
 		hj, tj := resources[j].SortKey()
@@ -68,59 +59,35 @@ func (d *Dashboard) refresh() {
 	})
 	d.sorted = resources
 
-	// Preserve current selection
 	selectedRow, _ := d.GetSelection()
 
-	headers := render.ResourceHeader()
-	numCols := len(headers)
-	numRows := len(resources) + 1 // +1 for header
+	d.Clear()
 
-	// Set header row
+	headers := render.ResourceHeader()
 	for col, h := range headers {
-		cell := d.GetCell(0, col)
-		if cell == nil {
-			cell = tview.NewTableCell(h).
-				SetSelectable(false).
-				SetTextColor(ui.ColorHeader).
-				SetAttributes(tcell.AttrBold)
-			d.SetCell(0, col, cell)
-		} else {
-			cell.SetText(h)
-		}
+		d.SetCell(0, col, tview.NewTableCell(h).
+			SetSelectable(false).
+			SetTextColor(ui.ColorHeader).
+			SetAttributes(tcell.AttrBold))
 	}
 
-	// Update data rows in-place
 	for i, r := range resources {
 		row := i + 1
 		cells := render.ResourceRow(r)
 		color := ui.HealthColor(r.Health)
 
 		for col, text := range cells {
-			cell := d.GetCell(row, col)
-			if cell == nil {
-				cell = tview.NewTableCell(text).SetTextColor(color)
-				if col == 0 {
-					cell.SetExpansion(0)
-				} else {
-					cell.SetExpansion(1)
-				}
-				d.SetCell(row, col, cell)
+			cell := tview.NewTableCell(text).SetTextColor(color)
+			if col == 0 {
+				cell.SetExpansion(0)
 			} else {
-				cell.SetText(text)
-				cell.SetTextColor(color)
+				cell.SetExpansion(1)
 			}
+			d.SetCell(row, col, cell)
 		}
 	}
 
-	// Remove excess rows
-	currentRowCount := d.GetRowCount()
-	for row := numRows; row < currentRowCount; row++ {
-		for col := 0; col < numCols; col++ {
-			d.SetCell(row, col, tview.NewTableCell(""))
-		}
-	}
-
-	// Restore selection (clamped)
+	numRows := len(resources) + 1
 	if selectedRow >= numRows {
 		selectedRow = numRows - 1
 	}

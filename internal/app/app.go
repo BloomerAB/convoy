@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"sync"
 	"time"
 
 	"github.com/bloomerab/convoy/config"
@@ -16,32 +15,28 @@ import (
 	"github.com/rivo/tview"
 )
 
+const refreshInterval = 2 * time.Second
+
 // App is the main application.
 type App struct {
-	tviewApp   *tview.Application
-	cfg        config.Config
-	factory    *client.ClusterFactory
-	tableModel *model.TableModel
-	pageStack  *PageStack
-	header     *view.Header
-	footer     *view.Footer
-	dashboard  *view.Dashboard
-	cmdInput   *view.CmdBar
-	layout     *tview.Flex
-	watchers   []dao.Watcher
-	cancel     context.CancelFunc
-
-	// Debounce: coalesce rapid watcher events into one redraw
-	debounceMu    sync.Mutex
-	debounceTimer *time.Timer
+	tviewApp  *tview.Application
+	cfg       config.Config
+	factory   *client.ClusterFactory
+	pageStack *PageStack
+	header    *view.Header
+	footer    *view.Footer
+	dashboard *view.Dashboard
+	cmdInput  *view.CmdBar
+	layout    *tview.Flex
+	watchers  []dao.Watcher
+	cancel    context.CancelFunc
 }
 
 func New(cfg config.Config) *App {
 	return &App{
-		tviewApp:   tview.NewApplication(),
-		cfg:        cfg,
-		factory:    client.NewClusterFactory(),
-		tableModel: model.NewTableModel(),
+		tviewApp: tview.NewApplication(),
+		cfg:      cfg,
+		factory:  client.NewClusterFactory(),
 	}
 }
 
@@ -72,7 +67,7 @@ func (a *App) Init() error {
 
 	a.header = view.NewHeader()
 	a.footer = view.NewFooter()
-	a.dashboard = view.NewDashboard(a.tableModel, a.onDescribe)
+	a.dashboard = view.NewDashboard(a.onDescribe)
 	a.pageStack = NewPageStack()
 	a.pageStack.Push("dashboard", a.dashboard)
 	a.cmdInput = view.NewCmdBar(a.onCommand, a.onCmdCancel)
@@ -92,6 +87,7 @@ func (a *App) Run() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	a.cancel = cancel
 	a.startWatchers(ctx)
+	go a.refreshLoop(ctx)
 	return a.tviewApp.Run()
 }
 
@@ -105,9 +101,9 @@ func (a *App) Stop() {
 func (a *App) startWatchers(ctx context.Context) {
 	for _, cc := range a.factory.Clients() {
 		watchers := []dao.Watcher{
-			dao.NewKustomizationDAO(cc, a.scheduleRedraw),
-			dao.NewHelmReleaseDAO(cc, a.scheduleRedraw),
-			dao.NewGitRepositoryDAO(cc, a.scheduleRedraw),
+			dao.NewKustomizationDAO(cc, func() {}),
+			dao.NewHelmReleaseDAO(cc, func() {}),
+			dao.NewGitRepositoryDAO(cc, func() {}),
 		}
 		for _, w := range watchers {
 			a.watchers = append(a.watchers, w)
@@ -120,25 +116,33 @@ func (a *App) startWatchers(ctx context.Context) {
 	}
 }
 
-// scheduleRedraw debounces watcher events — redraws at most every 500ms.
-func (a *App) scheduleRedraw() {
-	a.debounceMu.Lock()
-	defer a.debounceMu.Unlock()
+// refreshLoop redraws the UI on a fixed interval — watchers just populate the cache.
+func (a *App) refreshLoop(ctx context.Context) {
+	// Initial draw after a brief delay to let watchers populate
+	time.Sleep(1 * time.Second)
+	a.redraw()
 
-	if a.debounceTimer != nil {
-		a.debounceTimer.Stop()
+	ticker := time.NewTicker(refreshInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			a.redraw()
+		}
 	}
-	a.debounceTimer = time.AfterFunc(500*time.Millisecond, a.doRedraw)
 }
 
-func (a *App) doRedraw() {
+func (a *App) redraw() {
 	var all []model.Resource
 	for _, w := range a.watchers {
 		all = append(all, w.Resources()...)
 	}
 
 	a.tviewApp.QueueUpdateDraw(func() {
-		a.tableModel.SetResources(all)
+		a.dashboard.Refresh(all)
 		a.header.Update(all, len(a.factory.Clients()))
 	})
 }
@@ -162,7 +166,7 @@ func (a *App) handleInput(event *tcell.EventKey) *tcell.EventKey {
 			a.Stop()
 			return nil
 		case 'r':
-			a.doRedraw()
+			a.redraw()
 			return nil
 		case ':':
 			a.showCmdBar(":")
@@ -258,4 +262,5 @@ func (a *App) restartWatchers() {
 	ctx, cancel := context.WithCancel(context.Background())
 	a.cancel = cancel
 	a.startWatchers(ctx)
+	go a.refreshLoop(ctx)
 }
