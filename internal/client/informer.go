@@ -147,6 +147,14 @@ func (w *FluxWatcher) unstructuredToResource(obj unstructured.Unstructured) mode
 		r.Health, r.Message = extractHealth(conditions)
 	}
 
+	// If no Ready condition found, infer from artifact presence
+	if r.Health == model.HealthUnknown {
+		_, hasArtifact, _ := unstructured.NestedMap(obj.Object, "status", "artifact")
+		if hasArtifact {
+			r.Health = model.HealthReady
+		}
+	}
+
 	r.Revision = extractRevision(obj, w.kind)
 	r.LastTransition = extractLastTransition(conditions)
 	r.Interval = extractInterval(obj)
