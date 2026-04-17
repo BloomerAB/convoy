@@ -456,7 +456,6 @@ func (a *App) showClusterPicker() {
 	for _, name := range names {
 		n := name
 		list.AddItem(n, "", 0, func() {
-			a.pageStack.Pop() // remove picker
 			a.showTreeForCluster(n)
 		})
 	}
