@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/bloomerab/convoy/config"
@@ -33,6 +35,8 @@ type App struct {
 	cancel       context.CancelFunc
 	showMineOnly bool
 	cmdActive    bool
+	cmdMode      string // ":" or "/"
+	filterText   string // active / filter (regex)
 }
 
 func New(cfg config.Config) *App {
@@ -171,30 +175,77 @@ func (a *App) redraw() {
 }
 
 func (a *App) filterResources(resources []model.Resource) []model.Resource {
-	if !a.showMineOnly || a.ghPoller == nil {
-		return resources
-	}
+	result := resources
 
-	username := a.ghPoller.Username()
-	if username == "" {
-		return resources
-	}
-
-	var result []model.Resource
-	for _, r := range resources {
-		// Keep all Flux resources, filter GHA runs by actor
-		if r.Kind != model.KindWorkflowRun || r.Actor == username {
-			result = append(result, r)
+	// Mine filter: only GHA runs by current user
+	if a.showMineOnly && a.ghPoller != nil {
+		username := a.ghPoller.Username()
+		if username != "" {
+			var filtered []model.Resource
+			for _, r := range result {
+				if r.Kind != model.KindWorkflowRun || r.Actor == username {
+					filtered = append(filtered, r)
+				}
+			}
+			result = filtered
 		}
 	}
+
+	// Text filter: regex match across key fields
+	if a.filterText != "" {
+		re, err := regexp.Compile("(?i)" + a.filterText)
+		if err != nil {
+			// Fall back to substring match if invalid regex
+			lower := strings.ToLower(a.filterText)
+			var filtered []model.Resource
+			for _, r := range result {
+				if matchSubstring(r, lower) {
+					filtered = append(filtered, r)
+				}
+			}
+			result = filtered
+		} else {
+			var filtered []model.Resource
+			for _, r := range result {
+				if matchRegex(r, re) {
+					filtered = append(filtered, r)
+				}
+			}
+			result = filtered
+		}
+	}
+
 	return result
+}
+
+func matchRegex(r model.Resource, re *regexp.Regexp) bool {
+	return re.MatchString(r.Name) ||
+		re.MatchString(r.Cluster) ||
+		re.MatchString(string(r.Kind)) ||
+		re.MatchString(r.Namespace) ||
+		re.MatchString(r.Message) ||
+		re.MatchString(r.Repo) ||
+		re.MatchString(r.Branch) ||
+		re.MatchString(r.Actor) ||
+		re.MatchString(r.Health.String())
+}
+
+func matchSubstring(r model.Resource, lower string) bool {
+	return strings.Contains(strings.ToLower(r.Name), lower) ||
+		strings.Contains(strings.ToLower(r.Cluster), lower) ||
+		strings.Contains(strings.ToLower(string(r.Kind)), lower) ||
+		strings.Contains(strings.ToLower(r.Namespace), lower) ||
+		strings.Contains(strings.ToLower(r.Repo), lower) ||
+		strings.Contains(strings.ToLower(r.Branch), lower) ||
+		strings.Contains(strings.ToLower(r.Actor), lower) ||
+		strings.Contains(strings.ToLower(r.Health.String()), lower)
 }
 
 func (a *App) toggleMine() {
 	a.showMineOnly = !a.showMineOnly
 	a.redraw()
 	a.tviewApp.QueueUpdateDraw(func() {
-		a.footer.UpdateMineToggle(a.showMineOnly)
+		a.footer.UpdateFilter(a.filterText, a.showMineOnly)
 	})
 }
 
@@ -218,6 +269,10 @@ func (a *App) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		a.Stop()
 		return nil
 	case tcell.KeyEscape:
+		if a.filterText != "" && a.pageStack.Current() == "dashboard" {
+			a.clearFilter()
+			return nil
+		}
 		if a.pageStack.Current() != "dashboard" {
 			a.pageStack.Pop()
 			return nil
@@ -253,6 +308,7 @@ func (a *App) handleInput(event *tcell.EventKey) *tcell.EventKey {
 
 func (a *App) showCmdBar(prefix string) {
 	a.cmdActive = true
+	a.cmdMode = prefix
 	a.cmdInput.Activate(prefix)
 	a.layout.RemoveItem(a.footer)
 	a.layout.AddItem(a.cmdInput, 1, 0, true)
@@ -271,7 +327,13 @@ func (a *App) onCmdCancel() {
 }
 
 func (a *App) onCommand(text string) {
+	mode := a.cmdMode
 	a.hideCmdBar()
+
+	if mode == "/" {
+		a.setFilter(text)
+		return
+	}
 
 	cmd := ParseCommand(text)
 	switch cmd.Name {
@@ -279,7 +341,31 @@ func (a *App) onCommand(text string) {
 		a.execConfig()
 	case "q", "quit":
 		a.Stop()
+	case "filter":
+		if len(cmd.Args) > 0 {
+			a.setFilter(strings.Join(cmd.Args, " "))
+		} else {
+			a.clearFilter()
+		}
+	case "nofilter", "nf":
+		a.clearFilter()
 	}
+}
+
+func (a *App) setFilter(text string) {
+	a.filterText = text
+	a.redraw()
+	a.tviewApp.QueueUpdateDraw(func() {
+		a.footer.UpdateFilter(a.filterText, a.showMineOnly)
+	})
+}
+
+func (a *App) clearFilter() {
+	a.filterText = ""
+	a.redraw()
+	a.tviewApp.QueueUpdateDraw(func() {
+		a.footer.UpdateFilter("", a.showMineOnly)
+	})
 }
 
 func (a *App) execConfig() {
