@@ -94,8 +94,17 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 		}
 	}
 
-	// Pass 2: ManagedBy label — resources under their managing Kustomization
-	// ManagedBy is "namespace/name" of a Kustomization
+	// Pass 2: Kustomizations with no dependsOn parent → under their sourceRef GitRepo
+	for _, r := range workloads {
+		rk := resKey(r)
+		if !hasParent[rk] && r.Kind == model.KindKustomization && r.SourceRef != "" {
+			childrenOf["source:"+r.SourceRef] = append(childrenOf["source:"+r.SourceRef], r)
+			hasParent[rk] = true
+		}
+	}
+
+	// Pass 3: ManagedBy label — HelmRepos, HelmReleases, and remaining workloads
+	// under their managing Kustomization. Skip self-references.
 	managedByToKey := func(managedBy string) string {
 		return string(model.KindKustomization) + "/" + managedBy
 	}
@@ -111,17 +120,12 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 	for _, r := range workloads {
 		rk := resKey(r)
 		if !hasParent[rk] && r.ManagedBy != "" {
+			// Skip self-management (e.g. flux-system ks manages itself)
 			pk := managedByToKey(r.ManagedBy)
+			if pk == rk {
+				continue
+			}
 			childrenOf[pk] = append(childrenOf[pk], r)
-			hasParent[rk] = true
-		}
-	}
-
-	// Pass 3: Kustomizations with no parent → under their sourceRef GitRepo
-	for _, r := range workloads {
-		rk := resKey(r)
-		if !hasParent[rk] && r.Kind == model.KindKustomization && r.SourceRef != "" {
-			childrenOf["source:"+r.SourceRef] = append(childrenOf["source:"+r.SourceRef], r)
 			hasParent[rk] = true
 		}
 	}
