@@ -6,6 +6,7 @@ import (
 	"log"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/bloomerab/convoy/config"
@@ -38,14 +39,20 @@ type App struct {
 	cmdMode      string             // ":" or "/"
 	filterText   string             // active / filter (regex)
 	kindFilter   model.ResourceKind // empty = all kinds
+
+	// snapshot is the latest resource collection, updated by background goroutine.
+	// The UI goroutine only reads this — never touches watcher locks.
+	snapshot atomic.Value // []model.Resource
 }
 
 func New(cfg config.Config) *App {
-	return &App{
+	a := &App{
 		tviewApp: tview.NewApplication(),
 		cfg:      cfg,
 		factory:  client.NewClusterFactory(),
 	}
+	a.snapshot.Store([]model.Resource(nil))
+	return a
 }
 
 func (a *App) Init() error {
@@ -105,6 +112,7 @@ func (a *App) Run() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	a.cancel = cancel
 	a.startWatchers(ctx)
+	go a.collectorLoop(ctx)
 	go a.refreshLoop(ctx)
 	return a.tviewApp.Run()
 }
@@ -144,6 +152,43 @@ func (a *App) startWatchers(ctx context.Context) {
 	}
 }
 
+// collectorLoop runs on a background goroutine, collecting from watchers
+// (which may block on locks) and storing a snapshot. Never runs on UI goroutine.
+func (a *App) collectorLoop(ctx context.Context) {
+	// Initial collection after brief delay
+	time.Sleep(500 * time.Millisecond)
+	a.updateSnapshot()
+
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			a.updateSnapshot()
+		}
+	}
+}
+
+func (a *App) updateSnapshot() {
+	var all []model.Resource
+	for _, w := range a.watchers {
+		all = append(all, w.Resources()...)
+	}
+	a.snapshot.Store(all)
+}
+
+func (a *App) getSnapshot() []model.Resource {
+	v := a.snapshot.Load()
+	if v == nil {
+		return nil
+	}
+	return v.([]model.Resource)
+}
+
+// refreshLoop redraws the UI on a fixed interval using the snapshot.
 func (a *App) refreshLoop(ctx context.Context) {
 	time.Sleep(1 * time.Second)
 	a.redraw()
@@ -161,9 +206,9 @@ func (a *App) refreshLoop(ctx context.Context) {
 	}
 }
 
-// redraw queues a UI update from a background goroutine (ticker).
+// redraw queues a UI update from a background goroutine.
 func (a *App) redraw() {
-	all := a.collectResources()
+	all := a.getSnapshot()
 	filtered := a.filterResources(all)
 
 	a.tviewApp.QueueUpdateDraw(func() {
@@ -173,17 +218,9 @@ func (a *App) redraw() {
 
 // redrawDirect updates the UI immediately — call from the UI goroutine only.
 func (a *App) redrawDirect() {
-	all := a.collectResources()
+	all := a.getSnapshot()
 	filtered := a.filterResources(all)
 	a.applyUpdate(filtered)
-}
-
-func (a *App) collectResources() []model.Resource {
-	var all []model.Resource
-	for _, w := range a.watchers {
-		all = append(all, w.Resources()...)
-	}
-	return all
 }
 
 func (a *App) applyUpdate(resources []model.Resource) {
@@ -223,7 +260,6 @@ func (a *App) filterResources(resources []model.Resource) []model.Resource {
 	if a.filterText != "" {
 		re, err := regexp.Compile("(?i)" + a.filterText)
 		if err != nil {
-			// Fall back to substring match if invalid regex
 			lower := strings.ToLower(a.filterText)
 			var filtered []model.Resource
 			for _, r := range result {
@@ -281,7 +317,7 @@ func (a *App) onDescribe(r model.Resource) {
 }
 
 func (a *App) handleInput(event *tcell.EventKey) *tcell.EventKey {
-	// When cmd bar is active, only handle Ctrl+C — let the cmd bar handle everything else
+	// When cmd bar is active, only handle Ctrl+C
 	if a.cmdActive {
 		if event.Key() == tcell.KeyCtrlC {
 			a.Stop()
@@ -415,7 +451,6 @@ func (a *App) clearKindFilter() {
 	a.updateFooterDirect()
 }
 
-// updateFooterDirect updates footer on the UI goroutine.
 func (a *App) updateFooterDirect() {
 	a.footer.Update(a.filterText, a.showMineOnly, string(a.kindFilter))
 }
@@ -484,5 +519,6 @@ func (a *App) restartWatchers() {
 	ctx, cancel := context.WithCancel(context.Background())
 	a.cancel = cancel
 	a.startWatchers(ctx)
+	go a.collectorLoop(ctx)
 	go a.refreshLoop(ctx)
 }
