@@ -231,11 +231,8 @@ func (a *App) redraw() {
 	all := a.getSnapshot()
 	filtered := a.filterResources(all)
 
-	log.Printf("redraw: queuing update (%d resources, %d filtered)", len(all), len(filtered))
 	a.tviewApp.QueueUpdateDraw(func() {
-		log.Printf("redraw: applying update")
-		a.applyUpdate(filtered)
-		log.Printf("redraw: done")
+		a.applyUpdate(all, filtered)
 	})
 }
 
@@ -243,18 +240,18 @@ func (a *App) redraw() {
 func (a *App) redrawDirect() {
 	all := a.getSnapshot()
 	filtered := a.filterResources(all)
-	a.applyUpdate(filtered)
+	a.applyUpdate(all, filtered)
 }
 
-func (a *App) applyUpdate(resources []model.Resource) {
-	a.dashboard.Refresh(resources, a.showAll)
+func (a *App) applyUpdate(all []model.Resource, filtered []model.Resource) {
+	a.dashboard.Refresh(filtered, a.showAll)
 	if a.kindView != nil {
-		a.kindView.Refresh(resources)
+		a.kindView.Refresh(all)
 	}
 	if a.treeView != nil {
-		a.treeView.Refresh(resources)
+		a.treeView.Refresh(all)
 	}
-	a.header.Update(resources, len(a.factory.Clients()), a.showMineOnly, a.showAll)
+	a.header.Update(all, len(a.factory.Clients()), a.showMineOnly, a.showAll)
 }
 
 func (a *App) filterResources(resources []model.Resource) []model.Resource {
