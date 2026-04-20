@@ -67,15 +67,15 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 		}
 	}
 
-	// Pass 2: ManagedBy label — HelmRepos under their Kustomization
-	// GitRepos are always top-level roots, skip them here
+	// Pass 2: ManagedBy label — sources under their managing Kustomization
 	for _, r := range sources {
 		rk := resKey(r)
-		if r.Kind == model.KindGitRepository {
-			continue
-		}
 		if !hasParent[rk] && r.ManagedBy != "" {
 			pk := managedByToKey(r.ManagedBy)
+			// Skip self-managed (bootstrap GitRepo)
+			if pk == rk {
+				continue
+			}
 			childrenOf[pk] = append(childrenOf[pk], r)
 			hasParent[rk] = true
 		}
@@ -143,10 +143,10 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 
 	added := make(map[string]bool)
 
-	// GitRepositories as top-level
+	// Only root GitRepos (no parent) as top-level
 	var gitRepos []model.Resource
 	for _, r := range sources {
-		if r.Kind == model.KindGitRepository {
+		if r.Kind == model.KindGitRepository && !hasParent[resKey(r)] {
 			gitRepos = append(gitRepos, r)
 		}
 	}
