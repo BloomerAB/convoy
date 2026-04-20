@@ -234,7 +234,11 @@ func addSortedChildren(parentNode *tview.TreeNode, children []model.Resource, ch
 		}
 		added[rk] = true
 		childNode := makeNode(child, depsLabel[rk])
-		addSortedChildren(childNode, childrenOf[rk], childrenOf, added, depsLabel)
+		// Collect children from both direct key and source: prefixed key
+		var grandchildren []model.Resource
+		grandchildren = append(grandchildren, childrenOf[rk]...)
+		grandchildren = append(grandchildren, childrenOf["source:"+rk]...)
+		addSortedChildren(childNode, grandchildren, childrenOf, added, depsLabel)
 		parentNode.AddChild(childNode)
 	}
 }
