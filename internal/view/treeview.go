@@ -58,7 +58,7 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 		return string(model.KindKustomization) + "/" + managedBy
 	}
 
-	// Pass 1: Kustomizations → under their sourceRef GitRepo (primary ownership)
+	// Pass 1: Kustomizations → under their sourceRef GitRepo
 	for _, r := range workloads {
 		rk := resKey(r)
 		if r.Kind == model.KindKustomization && r.SourceRef != "" {
@@ -67,19 +67,30 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 		}
 	}
 
-	// Pass 2: ManagedBy label — sources under their managing Kustomization
+	// Pass 2: HelmRepos → under their managing Kustomization (ManagedBy label)
 	for _, r := range sources {
 		rk := resKey(r)
 		if !hasParent[rk] && r.ManagedBy != "" {
-			pk := managedByToKey(r.ManagedBy)
 			// Skip bootstrap GitRepo (managed by Kustomization with same ns/name)
 			if r.Kind == model.KindGitRepository && r.ManagedBy == r.Namespace+"/"+r.Name {
 				continue
 			}
+			pk := managedByToKey(r.ManagedBy)
 			childrenOf[pk] = append(childrenOf[pk], r)
 			hasParent[rk] = true
 		}
 	}
+
+	// Pass 3: HelmReleases → under their HelmRepo (sourceRef)
+	for _, r := range workloads {
+		rk := resKey(r)
+		if !hasParent[rk] && r.Kind == model.KindHelmRelease && r.SourceRef != "" {
+			childrenOf[r.SourceRef] = append(childrenOf[r.SourceRef], r)
+			hasParent[rk] = true
+		}
+	}
+
+	// Pass 4: Remaining workloads with ManagedBy (shouldn't be many)
 	for _, r := range workloads {
 		rk := resKey(r)
 		if !hasParent[rk] && r.ManagedBy != "" {
@@ -92,7 +103,7 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 		}
 	}
 
-	// Pass 3: HelmReleases with dependsOn but no ManagedBy → under their dep
+	// Pass 5: HelmReleases with dependsOn but still no parent → under their dep
 	byName := make(map[string][]model.Resource)
 	for _, r := range workloads {
 		byName[r.Name] = append(byName[r.Name], r)
