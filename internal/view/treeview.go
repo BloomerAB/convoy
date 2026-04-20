@@ -181,10 +181,30 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 	return &TreeView{TreeView: tree, cluster: cluster}
 }
 
-// Refresh rebuilds the tree with fresh data.
+// Refresh rebuilds the tree with fresh data, preserving selection.
 func (tv *TreeView) Refresh(resources []model.Resource) {
+	// Remember selected resource
+	var selectedKey string
+	if r := tv.SelectedResource(); r != nil {
+		selectedKey = resKey(*r)
+	}
+
 	fresh := NewFluxTreeView(resources, tv.cluster)
-	tv.SetRoot(fresh.GetRoot())
+	newRoot := fresh.GetRoot()
+	tv.SetRoot(newRoot)
+
+	// Restore selection
+	if selectedKey != "" {
+		tv.GetRoot().Walk(func(node, parent *tview.TreeNode) bool {
+			if r, ok := node.GetReference().(*model.Resource); ok {
+				if resKey(*r) == selectedKey {
+					tv.SetCurrentNode(node)
+					return false
+				}
+			}
+			return true
+		})
+	}
 }
 
 func addSortedChildren(parentNode *tview.TreeNode, children []model.Resource, childrenOf map[string][]model.Resource, added map[string]bool, depsLabel map[string]string) {
