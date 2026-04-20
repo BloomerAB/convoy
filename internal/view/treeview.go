@@ -72,8 +72,8 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 		rk := resKey(r)
 		if !hasParent[rk] && r.ManagedBy != "" {
 			pk := managedByToKey(r.ManagedBy)
-			// Skip self-managed (bootstrap GitRepo)
-			if pk == rk {
+			// Skip bootstrap GitRepo (managed by Kustomization with same ns/name)
+			if r.Kind == model.KindGitRepository && r.ManagedBy == r.Namespace+"/"+r.Name {
 				continue
 			}
 			childrenOf[pk] = append(childrenOf[pk], r)
