@@ -233,7 +233,7 @@ func kindLabel(k model.ResourceKind) string {
 	case model.KindKustomization:
 		return "ks"
 	case model.KindHelmRelease:
-		return "hr"
+		return "helmrelease"
 	case model.KindGitRepository:
 		return "git"
 	case model.KindHelmRepository:
