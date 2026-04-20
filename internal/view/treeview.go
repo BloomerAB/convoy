@@ -67,9 +67,13 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 		}
 	}
 
-	// Pass 2: ManagedBy label — HelmRepos and HelmReleases under their Kustomization
+	// Pass 2: ManagedBy label — HelmRepos under their Kustomization
+	// GitRepos are always top-level roots, skip them here
 	for _, r := range sources {
 		rk := resKey(r)
+		if r.Kind == model.KindGitRepository {
+			continue
+		}
 		if !hasParent[rk] && r.ManagedBy != "" {
 			pk := managedByToKey(r.ManagedBy)
 			childrenOf[pk] = append(childrenOf[pk], r)
