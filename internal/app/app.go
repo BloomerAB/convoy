@@ -446,12 +446,25 @@ func (a *App) openInBrowser() {
 	}
 }
 
-func (a *App) copyURL() {
-	if r := a.selectedResource(); r != nil && r.URL != "" {
-		cmd := exec.Command("pbcopy")
-		cmd.Stdin = strings.NewReader(r.URL)
-		_ = cmd.Run()
+func (a *App) copyResource() {
+	r := a.selectedResource()
+	if r == nil {
+		return
 	}
+
+	// URL if available, otherwise resource summary
+	var text string
+	if r.URL != "" {
+		text = r.URL
+	} else {
+		text = fmt.Sprintf("%s %s/%s (%s) on %s: %s",
+			r.Health.String(), r.Namespace, r.Name, r.Kind, r.Cluster, r.Message)
+	}
+
+	cmd := exec.Command("pbcopy")
+	cmd.Stdin = strings.NewReader(text)
+	_ = cmd.Run()
+	a.header.Flash("copied: " + r.Name)
 }
 
 func (a *App) showRunLogFor(r *model.Resource) {
@@ -599,7 +612,7 @@ func (a *App) handleInput(event *tcell.EventKey) *tcell.EventKey {
 			a.openInBrowser()
 			return nil
 		case 'c':
-			a.copyURL()
+			a.copyResource()
 			return nil
 		case 't':
 			a.showTree()
