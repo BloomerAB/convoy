@@ -246,9 +246,9 @@ func (a *App) redrawDirect() {
 }
 
 func (a *App) applyUpdate(all []model.Resource, filtered []model.Resource) {
-	a.dashboard.Refresh(filtered, a.showAll)
+	a.dashboard.Refresh(filtered, a.showAll, a.filterText)
 	if a.kindView != nil {
-		a.kindView.Refresh(all)
+		a.kindView.Refresh(all, a.filterText)
 	}
 	if a.treeView != nil {
 		a.treeView.Refresh(all)

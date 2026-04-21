@@ -65,7 +65,11 @@ func (kv *KindView) SelectedResource() *model.Resource {
 }
 
 // Refresh updates the table with resources filtered to this kind.
-func (kv *KindView) Refresh(allResources []model.Resource) {
+func (kv *KindView) Refresh(allResources []model.Resource, filter ...string) {
+	filterText := ""
+	if len(filter) > 0 {
+		filterText = filter[0]
+	}
 	var filtered []model.Resource
 	for _, r := range allResources {
 		if r.Kind != kv.kind {
@@ -110,6 +114,9 @@ func (kv *KindView) Refresh(allResources []model.Resource) {
 		color := ui.HealthColor(r.Health)
 
 		for col, text := range cells {
+			if filterText != "" && col > 0 {
+				text = ui.Highlight(text, filterText)
+			}
 			cell := tview.NewTableCell(text).SetTextColor(color)
 			if col == 0 {
 				cell.SetExpansion(0)

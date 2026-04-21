@@ -48,7 +48,11 @@ func (d *Dashboard) DescribeSelected() {
 }
 
 // Refresh rebuilds the table. Must be called on the UI goroutine.
-func (d *Dashboard) Refresh(resources []model.Resource, showAll bool) {
+func (d *Dashboard) Refresh(resources []model.Resource, showAll bool, filter ...string) {
+	filterText := ""
+	if len(filter) > 0 {
+		filterText = filter[0]
+	}
 	var active []model.Resource
 	if showAll {
 		active = resources
@@ -89,6 +93,9 @@ func (d *Dashboard) Refresh(resources []model.Resource, showAll bool) {
 		color := ui.HealthColor(r.Health)
 
 		for col, text := range cells {
+			if filterText != "" && col > 0 {
+				text = ui.Highlight(text, filterText)
+			}
 			cell := tview.NewTableCell(text).SetTextColor(color)
 			if col == 0 {
 				cell.SetExpansion(0)
