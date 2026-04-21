@@ -107,9 +107,9 @@ func (a *App) Init() error {
 
 	a.header = view.NewHeader()
 	a.footer = view.NewFooter()
-	a.dashboard = view.NewDashboard(a.onDescribe)
 	a.pageStack = NewPageStack()
-	a.pageStack.Push("dashboard", a.dashboard)
+	// Start with tree cluster picker
+	a.pageStack.Push("base", tview.NewBox())
 	a.cmdInput = view.NewCmdBar(a.onCommand, a.onCmdCancel)
 
 	headerSep := tview.NewBox().SetBorder(false).SetDrawFunc(drawHLine)
@@ -124,6 +124,9 @@ func (a *App) Init() error {
 
 	a.tviewApp.SetRoot(a.layout, true)
 	a.tviewApp.SetInputCapture(a.handleInput)
+
+	// Start with tree cluster picker
+	a.showClusterPicker()
 
 	return nil
 }
@@ -735,10 +738,11 @@ func (a *App) pushKindView(kind model.ResourceKind, activeOnly bool) {
 }
 
 func (a *App) popToHome() {
-	a.pageStack.PopTo("dashboard")
+	a.pageStack.PopTo("base")
 	a.kindView = nil
 	a.treeView = nil
 	a.ghaTreeView = nil
+	a.showClusterPicker()
 }
 
 func (a *App) updateFooterDirect() {
