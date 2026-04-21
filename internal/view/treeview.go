@@ -227,30 +227,70 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 	return &TreeView{TreeView: tree, cluster: cluster}
 }
 
-// Refresh rebuilds the tree with fresh data, preserving selection.
+// Refresh rebuilds the tree with fresh data, preserving selection and expand state.
 func (tv *TreeView) Refresh(resources []model.Resource) {
-	// Remember selected resource
-	var selectedKey string
-	if r := tv.SelectedResource(); r != nil {
-		selectedKey = resKey(*r)
+	currentNode := tv.GetCurrentNode()
+	var selectedPath []int
+	if currentNode != nil {
+		selectedPath = tv.findNodePath(tv.GetRoot(), currentNode)
 	}
+
+	expandState := make(map[string]bool)
+	tv.GetRoot().Walk(func(node, parent *tview.TreeNode) bool {
+		if len(node.GetChildren()) > 0 {
+			expandState[node.GetText()] = node.IsExpanded()
+		}
+		return true
+	})
 
 	fresh := NewFluxTreeView(resources, tv.cluster)
 	newRoot := fresh.GetRoot()
+
+	newRoot.Walk(func(node, parent *tview.TreeNode) bool {
+		if expanded, ok := expandState[node.GetText()]; ok {
+			node.SetExpanded(expanded)
+		}
+		return true
+	})
+
 	tv.SetRoot(newRoot)
 
-	// Restore selection
-	if selectedKey != "" {
-		tv.GetRoot().Walk(func(node, parent *tview.TreeNode) bool {
-			if r, ok := node.GetReference().(*model.Resource); ok {
-				if resKey(*r) == selectedKey {
-					tv.SetCurrentNode(node)
-					return false
-				}
-			}
-			return true
-		})
+	if len(selectedPath) > 0 {
+		node := tv.navigatePath(newRoot, selectedPath)
+		if node != nil {
+			tv.SetCurrentNode(node)
+		}
 	}
+}
+
+func (tv *TreeView) findNodePath(root, target *tview.TreeNode) []int {
+	if root == target {
+		return []int{}
+	}
+	for i, child := range root.GetChildren() {
+		if child == target {
+			return []int{i}
+		}
+		if path := tv.findNodePath(child, target); path != nil {
+			return append([]int{i}, path...)
+		}
+	}
+	return nil
+}
+
+func (tv *TreeView) navigatePath(root *tview.TreeNode, path []int) *tview.TreeNode {
+	node := root
+	for _, idx := range path {
+		children := node.GetChildren()
+		if idx >= len(children) {
+			if len(children) == 0 {
+				return node
+			}
+			return children[len(children)-1]
+		}
+		node = children[idx]
+	}
+	return node
 }
 
 func addSortedChildren(parentNode *tview.TreeNode, children []model.Resource, childrenOf map[string][]model.Resource, added map[string]bool, depsLabel map[string]string, ghaByRepo map[string]model.Resource) {

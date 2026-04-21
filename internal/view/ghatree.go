@@ -161,26 +161,73 @@ func NewGHATreeView(resources []model.Resource) *GHATreeView {
 	return &GHATreeView{TreeView: tree}
 }
 
-// Refresh rebuilds the tree.
+// Refresh rebuilds the tree, preserving selection and expand state.
 func (tv *GHATreeView) Refresh(resources []model.Resource) {
-	var selectedKey string
-	if r := tv.SelectedResource(); r != nil {
-		selectedKey = r.Repo + "/" + r.Name + "/" + r.Branch
+	// Save current node's path (index at each level)
+	currentNode := tv.GetCurrentNode()
+	var selectedPath []int
+	if currentNode != nil {
+		selectedPath = tv.findNodePath(tv.GetRoot(), currentNode)
 	}
+
+	// Save expand state by node text
+	expandState := make(map[string]bool)
+	tv.GetRoot().Walk(func(node, parent *tview.TreeNode) bool {
+		if len(node.GetChildren()) > 0 {
+			expandState[node.GetText()] = node.IsExpanded()
+		}
+		return true
+	})
 
 	fresh := NewGHATreeView(resources)
-	tv.SetRoot(fresh.GetRoot())
+	newRoot := fresh.GetRoot()
 
-	if selectedKey != "" {
-		tv.GetRoot().Walk(func(node, parent *tview.TreeNode) bool {
-			if r, ok := node.GetReference().(*model.Resource); ok {
-				key := r.Repo + "/" + r.Name + "/" + r.Branch
-				if key == selectedKey {
-					tv.SetCurrentNode(node)
-					return false
-				}
-			}
-			return true
-		})
+	// Restore expand state
+	newRoot.Walk(func(node, parent *tview.TreeNode) bool {
+		if expanded, ok := expandState[node.GetText()]; ok {
+			node.SetExpanded(expanded)
+		}
+		return true
+	})
+
+	tv.SetRoot(newRoot)
+
+	// Restore selection by path
+	if len(selectedPath) > 0 {
+		node := tv.navigatePath(newRoot, selectedPath)
+		if node != nil {
+			tv.SetCurrentNode(node)
+		}
 	}
+}
+
+func (tv *GHATreeView) findNodePath(root, target *tview.TreeNode) []int {
+	if root == target {
+		return []int{}
+	}
+	for i, child := range root.GetChildren() {
+		if child == target {
+			return []int{i}
+		}
+		if path := tv.findNodePath(child, target); path != nil {
+			return append([]int{i}, path...)
+		}
+	}
+	return nil
+}
+
+func (tv *GHATreeView) navigatePath(root *tview.TreeNode, path []int) *tview.TreeNode {
+	node := root
+	for _, idx := range path {
+		children := node.GetChildren()
+		if idx >= len(children) {
+			// Clamp to last child
+			if len(children) == 0 {
+				return node
+			}
+			return children[len(children)-1]
+		}
+		node = children[idx]
+	}
+	return node
 }
