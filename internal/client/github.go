@@ -144,7 +144,7 @@ func (p *GitHubPoller) discoverRepos(ctx context.Context) ([]string, error) {
 	opts := &github.RepositoryListByOrgOptions{
 		Sort:        "pushed",
 		Direction:   "desc",
-		ListOptions: github.ListOptions{PerPage: 20},
+		ListOptions: github.ListOptions{PerPage: 10},
 	}
 	repos, _, err := p.client.Repositories.ListByOrg(ctx, p.cfg.Org, opts)
 	if err != nil {
