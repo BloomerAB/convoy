@@ -42,10 +42,14 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 
 	var sources []model.Resource
 	var workloads []model.Resource
+	var deployments []model.Resource
 	for _, r := range clusterRes {
-		if r.Kind == model.KindGitRepository || r.Kind == model.KindHelmRepository {
+		switch {
+		case r.Kind == model.KindGitRepository || r.Kind == model.KindHelmRepository:
 			sources = append(sources, r)
-		} else {
+		case r.Kind == model.KindDeployment:
+			deployments = append(deployments, r)
+		default:
 			workloads = append(workloads, r)
 		}
 	}
@@ -138,6 +142,25 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 				}
 			}
 		}
+	}
+
+	// Pass 6: Deployments under their Kustomization or HelmRelease (ManagedBy)
+	for _, r := range deployments {
+		rk := resKey(r)
+		if r.ManagedBy == "" {
+			continue
+		}
+		if strings.HasPrefix(r.ManagedBy, "hr:") {
+			// HelmRelease-managed: "hr:namespace/name"
+			hrRef := r.ManagedBy[3:]
+			pk := string(model.KindHelmRelease) + "/" + hrRef
+			childrenOf[pk] = append(childrenOf[pk], r)
+		} else {
+			// Kustomization-managed
+			pk := managedByToKey(r.ManagedBy)
+			childrenOf[pk] = append(childrenOf[pk], r)
+		}
+		hasParent[rk] = true
 	}
 
 	// Build dependsOn labels for display
@@ -245,8 +268,20 @@ func addSortedChildren(parentNode *tview.TreeNode, children []model.Resource, ch
 
 func makeNode(r model.Resource, deps string) *tview.TreeNode {
 	color := healthColorHex(r.Health)
-	label := fmt.Sprintf("[%s]%s[-] %s [#9696B4](%s)[-]",
-		color, r.Health.Symbol(), r.Name, kindLabel(r.Kind))
+
+	var label string
+	if r.Kind == model.KindDeployment {
+		// Show image instead of kind label
+		img := ""
+		if len(r.Images) > 0 {
+			img = shortImage(r.Images[0])
+		}
+		label = fmt.Sprintf("[%s]%s[-] %s [#9696B4]%s[-]",
+			color, r.Health.Symbol(), r.Name, img)
+	} else {
+		label = fmt.Sprintf("[%s]%s[-] %s [#9696B4](%s)[-]",
+			color, r.Health.Symbol(), r.Name, kindLabel(r.Kind))
+	}
 
 	if deps != "" {
 		label += fmt.Sprintf(" [#6EB5FF]→ %s[-]", deps)
@@ -267,6 +302,22 @@ func makeNode(r model.Resource, deps string) *tview.TreeNode {
 	return node
 }
 
+// shortImage returns a compact image reference: "repo:tag" or "org/repo:tag"
+func shortImage(img string) string {
+	// Remove common registry prefixes
+	for _, prefix := range []string{"ghcr.io/", "docker.io/", "registry.k8s.io/", "quay.io/", "public.ecr.aws/"} {
+		if strings.HasPrefix(img, prefix) {
+			img = img[len(prefix):]
+			break
+		}
+	}
+	// Remove sha256 digest if tag is also present
+	if idx := strings.Index(img, "@sha256:"); idx > 0 {
+		img = img[:idx]
+	}
+	return img
+}
+
 func kindLabel(k model.ResourceKind) string {
 	switch k {
 	case model.KindKustomization:
@@ -277,6 +328,8 @@ func kindLabel(k model.ResourceKind) string {
 		return "git"
 	case model.KindHelmRepository:
 		return "helmrepo"
+	case model.KindDeployment:
+		return "deploy"
 	default:
 		return strings.ToLower(string(k))
 	}

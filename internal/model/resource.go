@@ -11,6 +11,7 @@ const (
 	KindHelmRepository ResourceKind = "HelmRepository"
 	KindGitRepository  ResourceKind = "GitRepository"
 	KindWorkflowRun    ResourceKind = "WorkflowRun"
+	KindDeployment     ResourceKind = "Deployment"
 )
 
 // Resource is a normalized representation of any monitored resource.
@@ -34,6 +35,7 @@ type Resource struct {
 	SourceRef      string        // Flux: "Kind/namespace/name" of source
 	DependsOn      []string      // Flux: "namespace/name" of dependencies
 	ManagedBy      string        // Flux: "namespace/name" of managing Kustomization
+	Images         []string      // Container images (Deployments)
 }
 
 // SortKey returns a comparable key for sorting:

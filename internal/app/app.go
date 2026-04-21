@@ -150,6 +150,7 @@ func (a *App) startWatchers(ctx context.Context) {
 			dao.NewHelmReleaseDAO(cc, func() {}),
 			dao.NewHelmRepositoryDAO(cc, func() {}),
 			dao.NewGitRepositoryDAO(cc, func() {}),
+			dao.NewDeploymentDAO(cc),
 		}
 		for _, w := range watchers {
 			a.watchers = append(a.watchers, w)

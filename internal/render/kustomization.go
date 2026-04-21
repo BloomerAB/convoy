@@ -84,6 +84,8 @@ func kindShort(k model.ResourceKind) string {
 		return "GitRepo"
 	case model.KindWorkflowRun:
 		return "Actions"
+	case model.KindDeployment:
+		return "Deploy"
 	default:
 		return string(k)
 	}
