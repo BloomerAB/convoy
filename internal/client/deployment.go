@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -142,6 +143,13 @@ func (w *DeploymentWatcher) toResource(obj unstructured.Unstructured) model.Reso
 		r.Message = fmt.Sprintf("%d/%d updated", updated, desired)
 	}
 
+	// Source repo annotation
+	annotations := obj.GetAnnotations()
+	if repo := annotations["doktor.se/source-repo"]; repo != "" {
+		// Normalize: "https://github.com/org/repo" → "org/repo"
+		r.Repo = normalizeGitHubRepo(repo)
+	}
+
 	// ManagedBy — check both kustomize and helm labels
 	labels := obj.GetLabels()
 	if ksName := labels["kustomize.toolkit.fluxcd.io/name"]; ksName != "" {
@@ -160,6 +168,16 @@ func (w *DeploymentWatcher) toResource(obj unstructured.Unstructured) model.Reso
 	}
 
 	return r
+}
+
+func normalizeGitHubRepo(url string) string {
+	url = strings.TrimSuffix(url, ".git")
+	url = strings.TrimSuffix(url, "/")
+	// "https://github.com/org/repo" → "org/repo"
+	if idx := strings.Index(url, "github.com/"); idx >= 0 {
+		return url[idx+len("github.com/"):]
+	}
+	return url
 }
 
 func (w *DeploymentWatcher) Resources() []model.Resource {

@@ -34,8 +34,16 @@ func resKey(r model.Resource) string {
 
 func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 	var clusterRes []model.Resource
+	// Build repo→latest GHA run lookup
+	ghaByRepo := make(map[string]model.Resource) // repo → most recent run
 	for _, r := range resources {
-		if r.Cluster == cluster && r.Kind != model.KindWorkflowRun {
+		if r.Kind == model.KindWorkflowRun {
+			if existing, ok := ghaByRepo[r.Repo]; !ok || r.LastTransition.After(existing.LastTransition) {
+				ghaByRepo[r.Repo] = r
+			}
+			continue
+		}
+		if r.Cluster == cluster {
 			clusterRes = append(clusterRes, r)
 		}
 	}
@@ -192,11 +200,11 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 		rk := resKey(src)
 		added[rk] = true
 
-		srcNode := makeNode(src, "")
+		srcNode := makeNode(src, "", ghaByRepo)
 		root.AddChild(srcNode)
 
 		sourceKey := "source:" + string(src.Kind) + "/" + src.Namespace + "/" + src.Name
-		addSortedChildren(srcNode, childrenOf[sourceKey], childrenOf, added, depsLabel)
+		addSortedChildren(srcNode, childrenOf[sourceKey], childrenOf, added, depsLabel, ghaByRepo)
 	}
 
 	// Orphans
@@ -205,8 +213,8 @@ func NewFluxTreeView(resources []model.Resource, cluster string) *TreeView {
 		rk := resKey(r)
 		if !added[rk] {
 			added[rk] = true
-			node := makeNode(r, depsLabel[rk])
-			addSortedChildren(node, childrenOf[rk], childrenOf, added, depsLabel)
+			node := makeNode(r, depsLabel[rk], ghaByRepo)
+			addSortedChildren(node, childrenOf[rk], childrenOf, added, depsLabel, ghaByRepo)
 			root.AddChild(node)
 		}
 	}
@@ -245,7 +253,7 @@ func (tv *TreeView) Refresh(resources []model.Resource) {
 	}
 }
 
-func addSortedChildren(parentNode *tview.TreeNode, children []model.Resource, childrenOf map[string][]model.Resource, added map[string]bool, depsLabel map[string]string) {
+func addSortedChildren(parentNode *tview.TreeNode, children []model.Resource, childrenOf map[string][]model.Resource, added map[string]bool, depsLabel map[string]string, ghaByRepo map[string]model.Resource) {
 	sort.Slice(children, func(i, j int) bool {
 		return children[i].Name < children[j].Name
 	})
@@ -256,28 +264,53 @@ func addSortedChildren(parentNode *tview.TreeNode, children []model.Resource, ch
 			continue
 		}
 		added[rk] = true
-		childNode := makeNode(child, depsLabel[rk])
+		childNode := makeNode(child, depsLabel[rk], ghaByRepo)
 		// Collect children from both direct key and source: prefixed key
 		var grandchildren []model.Resource
 		grandchildren = append(grandchildren, childrenOf[rk]...)
 		grandchildren = append(grandchildren, childrenOf["source:"+rk]...)
-		addSortedChildren(childNode, grandchildren, childrenOf, added, depsLabel)
+		addSortedChildren(childNode, grandchildren, childrenOf, added, depsLabel, ghaByRepo)
 		parentNode.AddChild(childNode)
 	}
 }
 
-func makeNode(r model.Resource, deps string) *tview.TreeNode {
+func makeNode(r model.Resource, deps string, ghaByRepo map[string]model.Resource) *tview.TreeNode {
 	color := healthColorHex(r.Health)
 
 	var label string
 	if r.Kind == model.KindDeployment {
-		// Show image instead of kind label
-		img := ""
+		// Show just the image tag
+		tag := ""
 		if len(r.Images) > 0 {
-			img = shortImage(r.Images[0])
+			img := r.Images[0]
+			if idx := strings.LastIndex(img, ":"); idx >= 0 {
+				tag = img[idx+1:]
+				// Strip sha256 digest
+				if didx := strings.Index(tag, "@"); didx >= 0 {
+					tag = tag[:didx]
+				}
+			}
 		}
 		label = fmt.Sprintf("[%s]%s[-] %s [#9696B4]%s[-]",
-			color, r.Health.Symbol(), r.Name, img)
+			color, r.Health.Symbol(), r.Name, tag)
+
+		// Show pipeline status if source repo is known
+		if r.Repo != "" {
+			if gha, ok := ghaByRepo[r.Repo]; ok {
+				pColor := healthColorHex(gha.Health)
+				repoShort := r.Repo
+				if idx := strings.LastIndex(repoShort, "/"); idx >= 0 {
+					repoShort = repoShort[idx+1:]
+				}
+				label += fmt.Sprintf(" [%s]%s %s[-]", pColor, gha.Health.Symbol(), repoShort)
+			} else {
+				repoShort := r.Repo
+				if idx := strings.LastIndex(repoShort, "/"); idx >= 0 {
+					repoShort = repoShort[idx+1:]
+				}
+				label += fmt.Sprintf(" [#9696B4]%s[-]", repoShort)
+			}
+		}
 	} else {
 		label = fmt.Sprintf("[%s]%s[-] %s [#9696B4](%s)[-]",
 			color, r.Health.Symbol(), r.Name, kindLabel(r.Kind))
