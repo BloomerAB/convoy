@@ -40,7 +40,7 @@ func ResourceRow(r model.Resource) []string {
 		r.Health.String(),
 		formatNextRun(r),
 		truncate(r.Message, 50),
-		formatAge(r.LastTransition),
+		FormatAge(r.LastTransition),
 	}
 }
 
@@ -98,7 +98,7 @@ func truncate(s string, max int) string {
 	return s
 }
 
-func formatAge(t time.Time) string {
+func FormatAge(t time.Time) string {
 	if t.IsZero() {
 		return "-"
 	}

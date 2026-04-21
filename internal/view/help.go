@@ -29,7 +29,7 @@ const helpText = `[#6EB5FF::b]Keys[-::-]
   [#FFFFFF]:hr[-]  :helmrelease  HelmReleases (all)
   [#FFFFFF]:helmrepo[-]          HelmRepositories (all)
   [#FFFFFF]:gitrepo[-]           GitRepositories (all)
-  [#FFFFFF]:gha[-] :actions      GitHub Actions (active only)
+  [#FFFFFF]:gha[-] :github       GitHub Actions tree (org → repo → runs)
   [#FFFFFF]:tree[-] [cluster]    Flux dependency tree
   [#FFFFFF]:all[-] :dashboard    Back to dashboard
   [#FFFFFF]:filter[-] <text>     Set filter

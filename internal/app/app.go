@@ -53,6 +53,7 @@ type App struct {
 	runLogResource *model.Resource     // resource shown in current runlog view
 	kindView       *view.KindView     // active kind page (nil when on dashboard)
 	treeView       *view.TreeView     // active tree view (nil when not on tree)
+	ghaTreeView    *view.GHATreeView  // active GHA tree view
 
 	// snapshot is the latest resource collection, updated by background goroutine.
 	// The UI goroutine only reads this — never touches watcher locks.
@@ -252,6 +253,9 @@ func (a *App) applyUpdate(all []model.Resource, filtered []model.Resource) {
 	if a.treeView != nil {
 		a.treeView.Refresh(all)
 	}
+	if a.ghaTreeView != nil {
+		a.ghaTreeView.Refresh(all)
+	}
 	a.header.Update(all, len(a.factory.Clients()), a.showMineOnly, a.showAll)
 }
 
@@ -356,6 +360,8 @@ func (a *App) selectedResource() *model.Resource {
 		return a.runLogResource
 	case cur == "tree" && a.treeView != nil:
 		return a.treeView.SelectedResource()
+	case cur == "github" && a.ghaTreeView != nil:
+		return a.ghaTreeView.SelectedResource()
 	}
 	return nil
 }
@@ -531,6 +537,13 @@ func (a *App) showClusterPicker() {
 	a.pageStack.Push("tree-picker", list)
 }
 
+func (a *App) showGHATree() {
+	all := a.getSnapshot()
+	tv := view.NewGHATreeView(all)
+	a.ghaTreeView = tv
+	a.pageStack.Push("github", tv)
+}
+
 func (a *App) showHelp() {
 	hv := view.NewHelpView()
 	a.pageStack.Push("help", hv)
@@ -569,6 +582,9 @@ func (a *App) handleInput(event *tcell.EventKey) *tcell.EventKey {
 			}
 			if a.pageStack.Current() == "tree" {
 				a.treeView = nil
+			}
+			if a.pageStack.Current() == "github" {
+				a.ghaTreeView = nil
 			}
 			a.pageStack.Pop()
 			return nil
@@ -675,8 +691,8 @@ func (a *App) onCommand(text string) {
 		}
 	case "nofilter", "nf":
 		a.clearFilter()
-	case "gha", "actions", "workflows":
-		a.pushKindView(model.KindWorkflowRun, true)
+	case "gha", "actions", "workflows", "github":
+		a.showGHATree()
 	case "ks", "kustomize", "kustomization", "kustomizations":
 		a.pushKindView(model.KindKustomization, false)
 	case "hr", "helmrelease", "helmreleases":
@@ -722,6 +738,7 @@ func (a *App) popToHome() {
 	a.pageStack.PopTo("dashboard")
 	a.kindView = nil
 	a.treeView = nil
+	a.ghaTreeView = nil
 }
 
 func (a *App) updateFooterDirect() {

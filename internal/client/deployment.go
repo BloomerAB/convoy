@@ -143,12 +143,10 @@ func (w *DeploymentWatcher) toResource(obj unstructured.Unstructured) model.Reso
 		r.Message = fmt.Sprintf("%d/%d updated", updated, desired)
 	}
 
-	// Source repo: annotation first, then infer from GHCR image
+	// Source repo from annotation only
 	annotations := obj.GetAnnotations()
 	if repo := annotations["doktor.se/source-repo"]; repo != "" {
 		r.Repo = normalizeGitHubRepo(repo)
-	} else if len(r.Images) > 0 {
-		r.Repo = repoFromImage(r.Images[0])
 	}
 
 	// ManagedBy — check both kustomize and helm labels
@@ -169,26 +167,6 @@ func (w *DeploymentWatcher) toResource(obj unstructured.Unstructured) model.Reso
 	}
 
 	return r
-}
-
-// repoFromImage tries to infer a GitHub org/repo from an image reference.
-// Works for ghcr.io/<org>/<repo> images. Returns empty for others.
-func repoFromImage(img string) string {
-	// ghcr.io/<org>/<repo>:<tag> → org/repo
-	if strings.HasPrefix(img, "ghcr.io/") {
-		parts := strings.SplitN(img[len("ghcr.io/"):], "/", 3)
-		if len(parts) >= 2 {
-			repo := parts[1]
-			if idx := strings.Index(repo, ":"); idx >= 0 {
-				repo = repo[:idx]
-			}
-			if idx := strings.Index(repo, "@"); idx >= 0 {
-				repo = repo[:idx]
-			}
-			return parts[0] + "/" + repo
-		}
-	}
-	return ""
 }
 
 func normalizeGitHubRepo(url string) string {
