@@ -29,6 +29,7 @@ type Resource struct {
 	Repo           string // GitHub repo (org/name) for workflow runs
 	Branch         string // Branch name for workflow runs
 	RunID          int64         // GitHub Actions run ID
+	RunNumber      int           // GitHub Actions run number (#123)
 	URL            string        // Web URL (GitHub run URL, etc.)
 	Interval       time.Duration // Flux reconciliation interval
 	NextRun        time.Time     // Estimated next reconciliation

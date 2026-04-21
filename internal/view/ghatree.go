@@ -134,12 +134,8 @@ func NewGHATreeView(resources []model.Resource) *GHATreeView {
 					color := healthColorHex(r.Health)
 					age := render.FormatAge(r.LastTransition)
 
-					label := fmt.Sprintf("[%s]%s[-] %s [#9696B4]%s  %s[-]",
-						color, r.Health.Symbol(), r.Branch, r.Actor, age)
-
-					if r.Health.IsFailed() {
-						label += fmt.Sprintf(" [#FF5050]failed[-]")
-					}
+					label := fmt.Sprintf("[%s]%s[-] [#9696B4]#%d[-] %s [#9696B4]%s  %s[-]",
+						color, r.Health.Symbol(), r.RunNumber, r.Branch, r.Actor, age)
 
 					rCopy := r
 					runNode := tview.NewTreeNode(label).
