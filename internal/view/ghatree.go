@@ -10,7 +10,7 @@ import (
 	"github.com/rivo/tview"
 )
 
-// GHATreeView shows GitHub Actions as a tree: org → repo → runs
+// GHATreeView shows GitHub Actions as a tree: org → repo → workflow → runs
 type GHATreeView struct {
 	*tview.TreeView
 }
@@ -36,28 +36,28 @@ func NewGHATreeView(resources []model.Resource) *GHATreeView {
 		}
 	}
 
-	// Group by org → repo → runs
-	type repoRuns struct {
-		repo string
+	// Group: org → repo → workflow → runs
+	type workflowRuns struct {
+		name string
 		runs []model.Resource
 	}
 
-	orgRepos := make(map[string]map[string][]model.Resource) // org → repo → runs
+	orgRepos := make(map[string]map[string]map[string][]model.Resource)
 	for _, r := range runs {
 		parts := strings.SplitN(r.Repo, "/", 2)
 		org := parts[0]
-		repo := r.Repo
 		if _, ok := orgRepos[org]; !ok {
-			orgRepos[org] = make(map[string][]model.Resource)
+			orgRepos[org] = make(map[string]map[string][]model.Resource)
 		}
-		orgRepos[org][repo] = append(orgRepos[org][repo], r)
+		if _, ok := orgRepos[org][r.Repo]; !ok {
+			orgRepos[org][r.Repo] = make(map[string][]model.Resource)
+		}
+		orgRepos[org][r.Repo][r.Name] = append(orgRepos[org][r.Repo][r.Name], r)
 	}
 
-	// Root
 	root := tview.NewTreeNode("[#FFFFFF::b]GitHub Actions[-::-]").
 		SetSelectable(false)
 
-	// Sort orgs
 	var orgs []string
 	for org := range orgRepos {
 		orgs = append(orgs, org)
@@ -71,7 +71,6 @@ func NewGHATreeView(resources []model.Resource) *GHATreeView {
 			SetExpanded(true)
 		root.AddChild(orgNode)
 
-		// Sort repos
 		var repoNames []string
 		for repo := range repos {
 			repoNames = append(repoNames, repo)
@@ -79,27 +78,17 @@ func NewGHATreeView(resources []model.Resource) *GHATreeView {
 		sort.Strings(repoNames)
 
 		for _, repoName := range repoNames {
-			repoRuns := repos[repoName]
+			workflows := repos[repoName]
 
-			// Sort runs: failed first, then by time
-			sort.Slice(repoRuns, func(i, j int) bool {
-				hi, ti := repoRuns[i].SortKey()
-				hj, tj := repoRuns[j].SortKey()
-				if hi != hj {
-					return hi < hj
-				}
-				return ti < tj
-			})
-
-			// Determine repo health from latest run
+			// Repo health: worst of any workflow
 			repoHealth := model.HealthReady
-			for _, r := range repoRuns {
-				if r.Health.IsFailed() {
-					repoHealth = model.HealthFailed
-					break
-				}
-				if r.Health == model.HealthProgressing {
-					repoHealth = model.HealthProgressing
+			for _, wfRuns := range workflows {
+				for _, r := range wfRuns {
+					if r.Health.IsFailed() {
+						repoHealth = model.HealthFailed
+					} else if r.Health == model.HealthProgressing && repoHealth != model.HealthFailed {
+						repoHealth = model.HealthProgressing
+					}
 				}
 			}
 
@@ -109,35 +98,58 @@ func NewGHATreeView(resources []model.Resource) *GHATreeView {
 			}
 
 			repoColor := healthColorHex(repoHealth)
-			repoLabel := fmt.Sprintf("[%s]%s[-] %s [#9696B4](%d runs)[-]",
-				repoColor, repoHealth.Symbol(), shortRepo, len(repoRuns))
-			repoNode := tview.NewTreeNode(repoLabel).
+			repoNode := tview.NewTreeNode(fmt.Sprintf("[%s]%s[-] %s", repoColor, repoHealth.Symbol(), shortRepo)).
 				SetSelectable(true).
 				SetExpanded(repoHealth.IsFailed() || repoHealth == model.HealthProgressing)
+			orgNode.AddChild(repoNode)
 
-			for _, r := range repoRuns {
-				color := healthColorHex(r.Health)
-				age := render.FormatAge(r.LastTransition)
+			// Sort workflow names
+			var wfNames []string
+			for wf := range workflows {
+				wfNames = append(wfNames, wf)
+			}
+			sort.Strings(wfNames)
 
-				label := fmt.Sprintf("[%s]%s[-] %s [#9696B4]%s  %s  %s[-]",
-					color, r.Health.Symbol(), r.Name, r.Branch, r.Actor, age)
+			for _, wfName := range wfNames {
+				wfRuns := workflows[wfName]
 
-				if r.Health.IsFailed() && r.Message != "" {
-					msg := r.Message
-					if len(msg) > 40 {
-						msg = msg[:37] + "..."
-					}
-					label += fmt.Sprintf(" [#FF5050]%s[-]", msg)
+				// Sort runs by time (newest first)
+				sort.Slice(wfRuns, func(i, j int) bool {
+					return wfRuns[i].LastTransition.After(wfRuns[j].LastTransition)
+				})
+
+				// Workflow health from latest run
+				wfHealth := model.HealthReady
+				if len(wfRuns) > 0 {
+					wfHealth = wfRuns[0].Health
 				}
 
-				rCopy := r
-				runNode := tview.NewTreeNode(label).
+				wfColor := healthColorHex(wfHealth)
+				wfNode := tview.NewTreeNode(fmt.Sprintf("[%s]%s[-] %s [#9696B4](%d)[-]",
+					wfColor, wfHealth.Symbol(), wfName, len(wfRuns))).
 					SetSelectable(true).
-					SetReference(&rCopy)
-				repoNode.AddChild(runNode)
-			}
+					SetExpanded(wfHealth.IsFailed() || wfHealth == model.HealthProgressing)
 
-			orgNode.AddChild(repoNode)
+				for _, r := range wfRuns {
+					color := healthColorHex(r.Health)
+					age := render.FormatAge(r.LastTransition)
+
+					label := fmt.Sprintf("[%s]%s[-] %s [#9696B4]%s  %s[-]",
+						color, r.Health.Symbol(), r.Branch, r.Actor, age)
+
+					if r.Health.IsFailed() {
+						label += fmt.Sprintf(" [#FF5050]failed[-]")
+					}
+
+					rCopy := r
+					runNode := tview.NewTreeNode(label).
+						SetSelectable(true).
+						SetReference(&rCopy)
+					wfNode.AddChild(runNode)
+				}
+
+				repoNode.AddChild(wfNode)
+			}
 		}
 	}
 
@@ -171,8 +183,4 @@ func (tv *GHATreeView) Refresh(resources []model.Resource) {
 			return true
 		})
 	}
-}
-
-func healthColorHexGHA(h model.HealthStatus) string {
-	return healthColorHex(h)
 }
