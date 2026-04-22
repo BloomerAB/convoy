@@ -108,9 +108,10 @@ func (a *App) Init() error {
 	a.header = view.NewHeader()
 	a.footer = view.NewFooter()
 	a.pageStack = NewPageStack()
-	// Start with tree cluster picker
-	a.pageStack.Push("base", tview.NewBox())
 	a.cmdInput = view.NewCmdBar(a.onCommand, a.onCmdCancel)
+
+	// Build cluster picker as initial view
+	a.buildClusterPicker()
 
 	headerSep := tview.NewBox().SetBorder(false).SetDrawFunc(drawHLine)
 	footerSep := tview.NewBox().SetBorder(false).SetDrawFunc(drawHLine)
@@ -124,9 +125,6 @@ func (a *App) Init() error {
 
 	a.tviewApp.SetRoot(a.layout, true)
 	a.tviewApp.SetInputCapture(a.handleInput)
-
-	// Start with tree cluster picker
-	a.showClusterPicker()
 
 	return nil
 }
@@ -505,7 +503,7 @@ func (a *App) showRunLogFor(r *model.Resource) {
 }
 
 func (a *App) showTree() {
-	a.showClusterPicker()
+	a.buildClusterPicker()
 }
 
 func (a *App) showTreeForCluster(cluster string) {
@@ -515,18 +513,11 @@ func (a *App) showTreeForCluster(cluster string) {
 	a.pageStack.Push("tree", tv)
 }
 
-func (a *App) showClusterPicker() {
-	all := a.getSnapshot()
-	clusters := make(map[string]bool)
-	for _, r := range all {
-		if r.Kind != model.KindWorkflowRun {
-			clusters[r.Cluster] = true
-		}
-	}
-
+func (a *App) buildClusterPicker() {
+	// Use factory clients — always available, even before snapshot
 	var names []string
-	for c := range clusters {
-		names = append(names, c)
+	for _, c := range a.factory.Clients() {
+		names = append(names, c.Name)
 	}
 	sort.Strings(names)
 
@@ -740,11 +731,10 @@ func (a *App) pushKindView(kind model.ResourceKind, activeOnly bool) {
 }
 
 func (a *App) popToHome() {
-	a.pageStack.PopTo("base")
+	a.pageStack.PopTo("tree-picker")
 	a.kindView = nil
 	a.treeView = nil
 	a.ghaTreeView = nil
-	a.showClusterPicker()
 }
 
 func (a *App) updateFooterDirect() {
