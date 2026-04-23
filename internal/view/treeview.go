@@ -360,7 +360,9 @@ func makeNode(r model.Resource, deps string, ghaByRepo map[string]model.Resource
 		label += fmt.Sprintf(" [#6EB5FF]→ %s[-]", deps)
 	}
 
-	if r.Health.IsFailed() && r.Message != "" {
+	if r.Health == model.HealthSuspended {
+		label += " [#FF9500]SUSPENDED[-]"
+	} else if r.Health.IsFailed() && r.Message != "" {
 		msg := r.Message
 		if len(msg) > 40 {
 			msg = msg[:37] + "..."
@@ -417,7 +419,7 @@ func healthColorHex(h model.HealthStatus) string {
 	case model.HealthProgressing:
 		return "#FFFF64"
 	case model.HealthSuspended:
-		return "#9696B4"
+		return "#FF9500"
 	default:
 		return "#FFFFFF"
 	}

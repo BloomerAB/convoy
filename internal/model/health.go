@@ -19,7 +19,7 @@ func (h HealthStatus) String() string {
 	case HealthProgressing:
 		return "Sync"
 	case HealthSuspended:
-		return "Paused"
+		return "Suspended"
 	case HealthReady:
 		return "Ready"
 	default:
@@ -34,7 +34,7 @@ func (h HealthStatus) Symbol() string {
 	case HealthProgressing:
 		return "●"
 	case HealthSuspended:
-		return "◌"
+		return "⏸"
 	case HealthReady:
 		return "✓"
 	default:
