@@ -54,6 +54,7 @@ type App struct {
 	kindView       *view.KindView     // active kind page (nil when on dashboard)
 	treeView       *view.TreeView     // active tree view (nil when not on tree)
 	ghaTreeView    *view.GHATreeView  // active GHA tree view
+	lastSnapshotHash uint64            // track if snapshot changed
 
 	// snapshot is the latest resource collection, updated by background goroutine.
 	// The UI goroutine only reads this — never touches watcher locks.
@@ -125,6 +126,7 @@ func (a *App) Init() error {
 
 	a.tviewApp.SetRoot(a.layout, true)
 	a.tviewApp.SetInputCapture(a.handleInput)
+	a.tviewApp.EnableMouse(true)
 
 	return nil
 }
@@ -247,19 +249,37 @@ func (a *App) redrawDirect() {
 }
 
 func (a *App) applyUpdate(all []model.Resource, filtered []model.Resource) {
+	hash := snapshotHash(all)
+	changed := hash != a.lastSnapshotHash
+	a.lastSnapshotHash = hash
+
 	if a.dashboard != nil {
 		a.dashboard.Refresh(filtered, a.showAll, a.filterText)
 	}
-	if a.kindView != nil {
+	if a.kindView != nil && changed {
 		a.kindView.Refresh(all, a.filterText)
 	}
-	if a.treeView != nil {
+	if a.treeView != nil && changed {
 		a.treeView.Refresh(all)
 	}
-	if a.ghaTreeView != nil {
+	if a.ghaTreeView != nil && changed {
 		a.ghaTreeView.Refresh(all)
 	}
 	a.header.Update(all, len(a.factory.Clients()), a.showMineOnly, a.showAll)
+}
+
+func snapshotHash(resources []model.Resource) uint64 {
+	var h uint64 = 14695981039346656037 // FNV offset basis
+	for _, r := range resources {
+		// Hash key fields that would change the display
+		for _, s := range []string{r.Name, r.Namespace, r.Cluster, string(r.Kind), r.Health.String(), r.Message, r.Revision} {
+			for _, c := range s {
+				h ^= uint64(c)
+				h *= 1099511628211 // FNV prime
+			}
+		}
+	}
+	return h
 }
 
 func (a *App) filterResources(resources []model.Resource) []model.Resource {
