@@ -126,7 +126,7 @@ func (a *App) Init() error {
 
 	a.tviewApp.SetRoot(a.layout, true)
 	a.tviewApp.SetInputCapture(a.handleInput)
-	a.tviewApp.EnableMouse(true)
+	a.tviewApp.EnableMouse(false)
 
 	return nil
 }
@@ -374,6 +374,7 @@ func (a *App) toggleShowAll() {
 // selectedResource returns the resource under the cursor in whatever list view is active.
 func (a *App) selectedResource() *model.Resource {
 	cur := a.pageStack.Current()
+	log.Printf("selectedResource: page=%s tree=%v gha=%v", cur, a.treeView != nil, a.ghaTreeView != nil)
 	switch {
 	case cur == "dashboard":
 		return a.dashboard.SelectedResource()
